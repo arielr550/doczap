@@ -175,6 +175,7 @@ project_root/
 │
 ├── main.py                  # thin shim: uv run python main.py
 ├── doczap                   # shell launcher for the CLI
+├── assets/logo.svg          # logo, also rendered into the macOS app icon
 ├── src/doczap/
 │   ├── cli.py               # CLI (installed as the `doczap` command)
 │   ├── desktop.py           # helper invoked by the macOS app
@@ -190,6 +191,7 @@ project_root/
 ├── tests/
 │   ├── test_conversion.py   # unit tests, LibreOffice mocked
 │   └── test_integration.py  # real conversion, skipped without soffice
+├── .github/workflows/tests.yml  # CI: unit tests on macOS and Ubuntu
 ├── AGENTS.md
 └── README.md
 ```
