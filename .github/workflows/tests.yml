@@ -39,7 +39,11 @@ jobs:
       # The integration tests skip themselves when soffice is missing, so a
       # broken install would otherwise pass silently.
       - name: Check that LibreOffice is found
-        run: uv run python -c "import sys; from converters.libreoffice import find_soffice; sys.exit(find_soffice() is None)"
+        run: uv run python -c "import sys; from doczap.converters.libreoffice import find_soffice; sys.exit(find_soffice() is None)"
 
       - name: Run tests
         run: uv run python -m unittest discover -s tests -v
+
+      - name: Build the macOS app
+        if: runner.os == 'macOS'
+        run: uv run python scripts/build_macos_app.py

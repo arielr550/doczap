@@ -9,8 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from conversion import convert_document
-from converters.libreoffice import find_soffice
+from doczap.conversion import convert_document
+from doczap.converters.libreoffice import find_soffice
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -88,7 +88,7 @@ class LibreOfficeIntegrationTests(unittest.TestCase):
 
             profile_cache = Path(temp_dir) / "cache" / "lo-profile"
             with (
-                patch("converters.libreoffice.profile_cache_dir", return_value=profile_cache),
+                patch("doczap.converters.libreoffice.profile_cache_dir", return_value=profile_cache),
                 ThreadPoolExecutor(max_workers=2) as pool,
             ):
                 outputs = list(pool.map(convert_document, docs))
@@ -126,7 +126,7 @@ class LibreOfficeIntegrationTests(unittest.TestCase):
                 )
 
             profile_cache = Path(temp_dir) / "cache" / "lo-profile"
-            with patch("converters.libreoffice.profile_cache_dir", return_value=profile_cache):
+            with patch("doczap.converters.libreoffice.profile_cache_dir", return_value=profile_cache):
                 output_path = convert_document(input_path)
 
             self.assertTrue(output_path.read_bytes().startswith(b"%PDF"))

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>DocZap</title>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#4F46E5"/>
+  <path d="M312 252 H616 L712 348 V772 H312 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M616 252 V348 H712 Z" fill="#C7D2FE" stroke="#C7D2FE" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M519 392 H588 L527 500 H586 L442 698 L482 554 H422 Z" fill="#4F46E5" stroke="#4F46E5" stroke-width="16" stroke-linejoin="round"/>
+</svg>

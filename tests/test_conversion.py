@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import fcntl
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import desktop
-import main
-from conversion import convert_document, default_output_path, select_converter
-from converters.libreoffice import LibreOfficeConverter
-from desktop import format_summary
+from doczap import cli, desktop, system
+from doczap.conversion import convert_document, default_output_path, select_converter
+from doczap.converters.libreoffice import LibreOfficeConverter
+from doczap.desktop import format_summary
 
 
 def fake_soffice(pdf_bytes: bytes | None):
@@ -45,7 +43,7 @@ class ConversionTests(unittest.TestCase):
             input_path.touch()
             converter = Mock()
 
-            with patch("conversion.select_converter", return_value=converter):
+            with patch("doczap.conversion.select_converter", return_value=converter):
                 result = convert_document(input_path)
 
             expected = input_path.resolve().with_suffix(".pdf")
@@ -80,8 +78,8 @@ class ConversionTests(unittest.TestCase):
             input_path.with_suffix(".pdf").touch()
 
             with (
-                patch("desktop.confirm_overwrite", return_value=False),
-                patch("desktop.convert_document") as convert,
+                patch("doczap.desktop.confirm_overwrite", return_value=False),
+                patch("doczap.desktop.convert_document") as convert,
             ):
                 converted, errors, skipped = desktop.convert_files([str(input_path)])
 
@@ -90,23 +88,23 @@ class ConversionTests(unittest.TestCase):
 
     def test_cli_returns_nonzero_on_failure(self) -> None:
         with (
-            patch("sys.argv", ["main.py", "missing.docx"]),
-            patch("main.convert_document", side_effect=FileNotFoundError("nope")),
+            patch("sys.argv", ["doczap", "missing.docx"]),
+            patch("doczap.cli.convert_document", side_effect=FileNotFoundError("nope")),
             self.assertLogs(level="ERROR"),
         ):
-            self.assertEqual(main.main(), 1)
+            self.assertEqual(cli.main(), 1)
 
 
 class LibreOfficeConverterTests(unittest.TestCase):
     def setUp(self) -> None:
-        which = patch("converters.libreoffice.shutil.which", return_value="/usr/bin/soffice")
+        which = patch("doczap.converters.libreoffice.shutil.which", return_value="/usr/bin/soffice")
         which.start()
         self.addCleanup(which.stop)
         cache_root = tempfile.TemporaryDirectory()
         self.addCleanup(cache_root.cleanup)
         self.profile_cache = Path(cache_root.name) / "doczap" / "lo-profile"
         cache = patch(
-            "converters.libreoffice.profile_cache_dir", return_value=self.profile_cache
+            "doczap.converters.libreoffice.profile_cache_dir", return_value=self.profile_cache
         )
         cache.start()
         self.addCleanup(cache.stop)
@@ -117,7 +115,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
     def test_cached_profile_is_reused_when_free(self) -> None:
         with tempfile.TemporaryDirectory() as output_dir:
             with patch(
-                "converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
+                "doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
             ) as run:
                 LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
@@ -126,10 +124,10 @@ class LibreOfficeConverterTests(unittest.TestCase):
     def test_concurrent_run_falls_back_to_temporary_profile(self) -> None:
         self.profile_cache.parent.mkdir(parents=True)
         with open(self.profile_cache.parent / "lo-profile.lock", "w") as held:
-            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertTrue(system.try_lock(held))
             with tempfile.TemporaryDirectory() as output_dir:
                 with patch(
-                    "converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
+                    "doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
                 ) as run:
                     LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
@@ -138,7 +136,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
     def run_with_fake_soffice(self) -> None:
         with tempfile.TemporaryDirectory() as output_dir:
-            with patch("converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")):
+            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")):
                 LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
     def test_profile_blocks_remote_links(self) -> None:
@@ -169,7 +167,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
     def test_timeout_is_bounded_and_reported(self) -> None:
         timeout = subprocess.TimeoutExpired(cmd=["soffice"], timeout=1)
-        with patch("converters.libreoffice.subprocess.run", side_effect=timeout):
+        with patch("doczap.converters.libreoffice.subprocess.run", side_effect=timeout):
             converter = LibreOfficeConverter(timeout_seconds=1)
             with self.assertRaisesRegex(RuntimeError, "timed out after 1 seconds"):
                 converter._run_soffice(Path("input.docx"), Path("."))
@@ -178,7 +176,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             with patch(
-                "converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
+                "doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
             ) as run:
                 LibreOfficeConverter()._run_soffice(Path("report.docx"), output_dir)
 
@@ -191,7 +189,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             src.touch()
             dst.write_bytes(b"old pdf")
 
-            with patch("converters.libreoffice.subprocess.run", side_effect=fake_soffice(None)):
+            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(None)):
                 with self.assertRaisesRegex(RuntimeError, "could not be loaded"):
                     LibreOfficeConverter().convert(str(src), str(dst))
 
@@ -208,7 +206,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             src = Path(temp_dir) / "report.docx"
             src.touch()
-            with patch("converters.libreoffice.subprocess.run", return_value=noisy):
+            with patch("doczap.converters.libreoffice.subprocess.run", return_value=noisy):
                 with self.assertRaises(RuntimeError) as raised:
                     LibreOfficeConverter().convert(str(src), str(src.with_suffix(".pdf")))
 
@@ -222,7 +220,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             src.touch()
             dst.write_bytes(b"old pdf")
 
-            with patch("converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
+            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
                 LibreOfficeConverter().convert(str(src), str(dst))
 
             self.assertEqual(dst.read_bytes(), b"new pdf")
@@ -233,21 +231,56 @@ class LibreOfficeConverterTests(unittest.TestCase):
             dst = Path(temp_dir) / "final.pdf"
             src.touch()
 
-            with patch("converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
+            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
                 LibreOfficeConverter().convert(str(src), str(dst))
 
             self.assertEqual(dst.read_bytes(), b"new pdf")
             self.assertFalse((Path(temp_dir) / "report.pdf").exists())
 
 
+class SystemTests(unittest.TestCase):
+    def test_soffice_candidates_cover_each_platform(self) -> None:
+        self.assertIn(
+            Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
+            system.soffice_candidates("darwin"),
+        )
+        self.assertIn(
+            Path("/usr/lib/libreoffice/program/soffice"), system.soffice_candidates("linux")
+        )
+        with patch.dict("os.environ", {"PROGRAMFILES": "C:\\Program Files"}, clear=True):
+            self.assertEqual(
+                system.soffice_candidates("win32"),
+                [Path("C:\\Program Files") / "LibreOffice" / "program" / "soffice.exe"],
+            )
+
+    def test_cache_dir_follows_platform_conventions(self) -> None:
+        self.assertEqual(
+            system.cache_dir("darwin"), Path.home() / "Library" / "Caches" / "doczap"
+        )
+        with patch.dict("os.environ", {"XDG_CACHE_HOME": "/xdg"}):
+            self.assertEqual(system.cache_dir("linux"), Path("/xdg/doczap"))
+        with patch.dict("os.environ", {"LOCALAPPDATA": "/local"}):
+            self.assertEqual(system.cache_dir("win32"), Path("/local/doczap"))
+
+    def test_lock_is_exclusive_until_released(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            lock_path = Path(temp_dir) / "test.lock"
+            with open(lock_path, "w") as first:
+                self.assertTrue(system.try_lock(first))
+                with open(lock_path, "w") as second:
+                    self.assertFalse(system.try_lock(second))
+            with open(lock_path, "w") as third:
+                self.assertTrue(system.try_lock(third))
+
+
 class SofficeLookupTests(unittest.TestCase):
-    def test_falls_back_to_macos_app_bundle(self) -> None:
+    def test_falls_back_to_standard_install_location(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             bundled = Path(temp_dir) / "soffice"
             bundled.touch()
             with (
-                patch("converters.libreoffice.shutil.which", return_value=None),
-                patch("converters.libreoffice.MACOS_SOFFICE_CANDIDATES", (bundled,)),
+                patch("doczap.converters.libreoffice.shutil.which", return_value=None),
+                patch("doczap.converters.libreoffice.soffice_candidates", return_value=[bundled]),
             ):
                 self.assertEqual(LibreOfficeConverter().soffice_binary, str(bundled))
 
@@ -258,13 +291,13 @@ class SofficeLookupTests(unittest.TestCase):
             real.touch()
             link = Path(temp_dir) / "soffice"
             link.symlink_to(real)
-            with patch("converters.libreoffice.shutil.which", return_value=str(link)):
+            with patch("doczap.converters.libreoffice.shutil.which", return_value=str(link)):
                 self.assertEqual(LibreOfficeConverter().soffice_binary, str(real.resolve()))
 
     def test_missing_soffice_fails_clearly(self) -> None:
         with (
-            patch("converters.libreoffice.shutil.which", return_value=None),
-            patch("converters.libreoffice.MACOS_SOFFICE_CANDIDATES", ()),
+            patch("doczap.converters.libreoffice.shutil.which", return_value=None),
+            patch("doczap.converters.libreoffice.soffice_candidates", return_value=[]),
         ):
             with self.assertRaisesRegex(RuntimeError, "was not found"):
                 LibreOfficeConverter()
