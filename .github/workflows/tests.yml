@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # The oldest supported Python and the newest one.
+        python: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: false
+
+      - name: Install LibreOffice (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer
+
+      - name: Install LibreOffice (macOS)
+        if: runner.os == 'macOS'
+        run: brew install --cask libreoffice
+
+      # The integration tests skip themselves when soffice is missing, so a
+      # broken install would otherwise pass silently.
+      - name: Check that LibreOffice is found
+        run: uv run python -c "import sys; from converters.libreoffice import find_soffice; sys.exit(find_soffice() is None)"
+
+      - name: Run tests
+        run: uv run python -m unittest discover -s tests -v
