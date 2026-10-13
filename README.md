@@ -60,5 +60,6 @@ For other fonts (Aptos, for example), install the font files system-wide.
 
 ## Extending
 
-Add a converter class implementing `Converter` (`converters/base.py`), then route
-to it from `select_converter(...)` in `conversion.py`. The CLI stays unchanged.
+Add a converter class implementing `Converter`
+(`src/doczap/converters/base.py`), then route to it from `select_converter(...)`
+in `src/doczap/conversion.py`. The CLI stays unchanged.

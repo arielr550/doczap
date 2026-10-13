@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from converters.base import Converter
-from converters.libreoffice import LibreOfficeConverter
-from utils.file_ops import ensure_supported_input, validate_input_path, validate_output_path
+from doczap.converters.base import Converter
+from doczap.converters.libreoffice import LibreOfficeConverter
+from doczap.utils.file_ops import ensure_supported_input, validate_input_path, validate_output_path
 
 
 def default_output_path(input_path: Path) -> Path:

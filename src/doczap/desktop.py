@@ -1,3 +1,5 @@
+"""Helper behind the macOS app: converts files chosen in Finder beside the originals."""
+
 from __future__ import annotations
 
 import argparse
@@ -5,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conversion import convert_document, default_output_path
+from doczap.conversion import convert_document, default_output_path
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -1,22 +1,15 @@
 from __future__ import annotations
 
-import fcntl
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
-from converters.base import Converter
-
-# LibreOffice's .dmg installer does not put soffice on PATH.
-MACOS_SOFFICE_CANDIDATES = (
-    Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
-    Path.home() / "Applications/LibreOffice.app/Contents/MacOS/soffice",
-)
+from doczap.converters.base import Converter
+from doczap.system import cache_dir, soffice_candidates, try_lock
 
 # Name the import filter explicitly. Without it LibreOffice falls back to its
 # plain-text importer for unreadable files and "successfully" renders the raw
@@ -32,7 +25,7 @@ def find_soffice(binary: str = "soffice") -> str | None:
         # Launching LibreOffice through a symlink such as /usr/local/bin/soffice
         # adds about 1.5 seconds of startup on macOS.
         return os.path.realpath(found)
-    for candidate in MACOS_SOFFICE_CANDIDATES:
+    for candidate in soffice_candidates():
         if candidate.is_file():
             return str(candidate)
     return None
@@ -74,11 +67,7 @@ def block_remote_links(profile: Path) -> None:
 
 
 def profile_cache_dir() -> Path:
-    if sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-    return base / "doczap" / "lo-profile"
+    return cache_dir() / "lo-profile"
 
 
 @contextmanager
@@ -91,12 +80,15 @@ def libreoffice_profile() -> Iterator[Path]:
     """
     cache = profile_cache_dir()
     with ExitStack() as stack:
-        profile = cache
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
             lock = stack.enter_context(open(cache.parent / "lo-profile.lock", "w"))
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = try_lock(lock)
         except OSError:
+            locked = False
+        if locked:
+            profile = cache
+        else:
             profile = Path(
                 stack.enter_context(tempfile.TemporaryDirectory(prefix="doczap_lo_profile_"))
             )
@@ -109,8 +101,8 @@ class LibreOfficeConverter(Converter):
         resolved = find_soffice(soffice_binary)
         if resolved is None:
             raise RuntimeError(
-                "LibreOffice binary 'soffice' was not found in PATH or /Applications. "
-                "Install LibreOffice and ensure 'soffice' is accessible."
+                "LibreOffice binary 'soffice' was not found in PATH or its standard "
+                "install location. Install LibreOffice and ensure 'soffice' is accessible."
             )
         self.soffice_binary = resolved
         self.timeout_seconds = timeout_seconds
