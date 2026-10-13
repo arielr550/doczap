@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # The Homebrew Python on the macOS runners takes 35 seconds to resolve
+  # 127.0.0.1, which the integration tests' local HTTP server does at startup.
+  UV_MANAGED_PYTHON: "1"
+
 jobs:
   test:
     name: ${{ matrix.os }}, Python ${{ matrix.python }}
@@ -15,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         # The oldest supported Python and the newest one.
         python: ["3.10", "3.14"]
     steps:
@@ -35,6 +40,10 @@ jobs:
       - name: Install LibreOffice (macOS)
         if: runner.os == 'macOS'
         run: brew install --cask libreoffice
+
+      - name: Install LibreOffice (Windows)
+        if: runner.os == 'Windows'
+        run: choco install libreoffice-fresh --yes --no-progress
 
       # The integration tests skip themselves when soffice is missing, so a
       # broken install would otherwise pass silently.
