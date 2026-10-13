@@ -1,98 +1,64 @@
 # DocZap
 
-Fast, local, private DOCX to PDF conversion that keeps the layout intact, using LibreOffice headless mode.
+Fast, local, private DOCX → PDF conversion that keeps the layout intact.
 
-## Why this approach
-
-- Local-only execution (no network calls, no cloud APIs)
-- High layout fidelity by using LibreOffice's renderer
-- Fast and minimal CLI flow
-- Easy to extend with new converter backends and formats
+Rendering is done by LibreOffice in headless mode, so the PDF matches what Word
+shows. Nothing leaves your machine — no cloud APIs, no network calls.
 
 ## Requirements
 
-- `uv` installed (Homebrew or the official installer)
-- LibreOffice installed, either via `brew install --cask libreoffice` or the
-  `.dmg` into `/Applications`. `soffice` is found on `PATH` or inside
-  `LibreOffice.app`.
-- Python 3.10 or newer, which `uv` can provide
+- [uv](https://docs.astral.sh/uv/) (Homebrew or the official installer)
+- LibreOffice — `brew install --cask libreoffice`, or the `.dmg` into `/Applications`
 
-## Easiest usage on macOS
+## Usage
 
-Build the app once (and again after changing the source):
+### macOS app
+
+Build it once (and again after changing the source):
 
 ```bash
 uv run --offline python scripts/build_macos_app.py
 ```
 
-Open `dist/DocZap.app`, then choose one or more Word documents. You can also
-drag DOCX files directly onto the app. Each PDF is saved beside its original DOCX,
-so there is no output path to type or remember.
+Open `dist/DocZap.app` and pick one or more Word documents, or drag DOCX files
+onto it. Each PDF is saved next to its original, and you're asked before anything
+is replaced. The app can be moved to `/Applications` or the Desktop.
 
-If a PDF with the same name already exists, the app asks before replacing it.
-Everything runs locally through LibreOffice; the app makes no network calls.
-Images a document only links to on the web are not downloaded, so they are left
-out of the PDF.
+### Command line
 
-The app is self-contained with respect to this project's Python source, so it can
-be moved to `/Applications` or the Desktop. It still requires `uv` and LibreOffice
-to be installed on the Mac. `dist/` is a build output and is not committed.
-
-## Battery and performance
-
-- The app runs only when opened or when files are dropped onto it.
-- It installs no login item, background service, watcher, or scheduled task.
-- LibreOffice exits after each conversion and is limited by a 60-second timeout.
-- LibreOffice uses a private profile cached in `~/Library/Caches/doczap/lo-profile`
-  (about 0.5 MB), which skips its first-start setup on every conversion. A
-  concurrent conversion gets a temporary profile instead of sharing it. Delete the
-  folder to reset it.
-- `uv` runs offline, so conversion never performs update or network checks.
-
-## Terminal usage
-
-The short form saves the PDF beside the DOCX:
+Save the PDF beside the DOCX:
 
 ```bash
-./doczap "/any/location/report.docx"
+./doczap report.docx
 ```
 
-You can drag a file from Finder into Terminal instead of typing its path.
-
-To choose a different output path:
+Or choose the output path (add `--overwrite` to replace an existing file):
 
 ```bash
 uv run --offline python main.py input.docx output.pdf
 ```
 
-Overwrite existing output only when explicit:
-
-```bash
-uv run --offline python main.py input.docx output.pdf --overwrite
-```
-
-## Behavior
-
-- Validates input exists and is a file
-- Validates output path and blocks overwrite by default
-- Fails clearly if format is unsupported
-- Fails clearly if `soffice` is missing
-- Uses `soffice --headless --convert-to pdf` for rendering fidelity
-- Renders into a temporary directory and only then moves the PDF into place, so a
-  failed conversion never leaves an old PDF looking like fresh output
-
-## Fonts and fidelity
+## Fonts
 
 Pagination only matches Word when the document's fonts are available to
 LibreOffice. Microsoft's defaults (Calibri, Cambria) are usually missing on a Mac,
-and Microsoft Office for Mac keeps its fonts inside its own app bundle where
-LibreOffice cannot see them. Missing fonts are silently substituted, which shifts
-line breaks and page counts.
-
-Install the metric-compatible replacements to keep layout stable:
+and missing fonts are silently substituted, which shifts line breaks and page
+counts. Install the metric-compatible replacements:
 
 ```bash
 brew install --cask font-carlito font-caladea
 ```
 
-For other fonts (for example Aptos), install the actual font files system-wide.
+For other fonts (Aptos, for example), install the font files system-wide.
+
+## Notes
+
+- Runs only when you open it — no login item, background service, or watcher.
+- LibreOffice exits after each conversion, with a 60-second timeout.
+- Web-linked images are not downloaded, so they are left out of the PDF.
+- Converts into a temporary file first, so a failed run never leaves a stale PDF.
+
+## Extending
+
+Add a converter class implementing `Converter` (`converters/base.py`), then route
+to it from `select_converter(...)` in `conversion.py`. The CLI stays unchanged.
