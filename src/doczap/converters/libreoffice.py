@@ -31,9 +31,17 @@ def find_soffice(binary: str = "soffice") -> str | None:
     return None
 
 
+# soffice logs these harmless lines on every headless launch.
+STDERR_NOISE = (
+    "Task policy set failed",  # macOS
+    "Could not find platform independent libraries",  # Windows
+)
+
+
 def clean_stderr(stderr: str) -> str:
-    # soffice logs this harmless line on every headless launch on macOS.
-    lines = [line for line in stderr.splitlines() if "Task policy set failed" not in line]
+    lines = [
+        line for line in stderr.splitlines() if not any(noise in line for noise in STDERR_NOISE)
+    ]
     return "\n".join(lines).strip()
 
 

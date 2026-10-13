@@ -195,12 +195,13 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
             self.assertEqual(dst.read_bytes(), b"old pdf")
 
-    def test_macos_launch_noise_is_dropped_from_errors(self) -> None:
+    def test_launch_noise_is_dropped_from_errors(self) -> None:
         noisy = subprocess.CompletedProcess(
             ["soffice"],
             0,
             stdout="",
             stderr="2026-09-15 20:56:48.940 soffice[1:2] Task policy set failed: 4\n"
+            "Could not find platform independent libraries <prefix>\n"
             "Error: source file could not be loaded",
         )
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -212,6 +213,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
         self.assertIn("could not be loaded", str(raised.exception))
         self.assertNotIn("Task policy", str(raised.exception))
+        self.assertNotIn("platform independent", str(raised.exception))
 
     def test_output_replaces_existing_pdf_with_same_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
