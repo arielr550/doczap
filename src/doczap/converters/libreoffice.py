@@ -4,11 +4,13 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from doczap.converters.base import Converter
+from doczap.process import check_cancelled, run_process
 from doczap.utils.file_ops import validate_output_path
 from doczap.utils.save_pdf import save_pdf
 from doczap.system import (
@@ -128,7 +130,10 @@ class LibreOfficeConverter(Converter):
         self.soffice_binary = resolved
         self.timeout_seconds = timeout_seconds
 
-    def convert(self, input_path: str, output_path: str, *, overwrite: bool = False) -> None:
+    def convert(
+        self, input_path: str, output_path: str, *, overwrite: bool = False,
+        cancel: threading.Event | None = None,
+    ) -> None:
         src = Path(input_path)
         dst = Path(output_path)
         validate_output_path(dst, overwrite=overwrite, input_path=src)
@@ -137,16 +142,19 @@ class LibreOfficeConverter(Converter):
         # writing anything, so an existing PDF at dst must never count as output.
         with tempfile.TemporaryDirectory(prefix=".doczap_", dir=dst.parent) as temp_dir:
             temp_dir_path = Path(temp_dir)
-            result = self._run_soffice(src, temp_dir_path)
+            result = self._run_soffice(src, temp_dir_path, cancel=cancel)
             produced = temp_dir_path / f"{src.stem}.pdf"
             if not produced.is_file():
                 raise RuntimeError(
                     f"LibreOffice did not produce a PDF for {src.name}. "
                     f"stderr='{clean_stderr(result.stderr)}'"
                 )
+            check_cancelled(cancel)
             save_pdf(produced, dst, input_path=src, overwrite=overwrite)
 
-    def _run_soffice(self, input_file: Path, output_dir: Path) -> subprocess.CompletedProcess[str]:
+    def _run_soffice(
+        self, input_file: Path, output_dir: Path, *, cancel: threading.Event | None = None
+    ) -> subprocess.CompletedProcess[str]:
         with libreoffice_profile() as profile_dir:
             command = [
                 self.soffice_binary,
@@ -164,13 +172,11 @@ class LibreOfficeConverter(Converter):
                 str(input_file),
             ]
             try:
-                result = subprocess.run(
+                result = run_process(
                     command,
-                    capture_output=True,
-                    text=True,
-                    check=False,
                     timeout=self.timeout_seconds,
                     env={**os.environ, **soffice_environment()},
+                    cancel=cancel,
                 )
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError(

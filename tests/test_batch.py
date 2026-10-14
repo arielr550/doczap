@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from doczap.batch import Job, Result, format_summary, plan_jobs, run_jobs
+from doczap.process import ConversionCancelled
 
 
-def fake_convert(source, output, *, overwrite=False):
+def fake_convert(source, output, *, overwrite=False, cancel=None):
     Path(output).write_bytes(b"%PDF")
     return Path(output)
 
@@ -25,7 +27,7 @@ class PlanTests(unittest.TestCase):
 
 class RunTests(unittest.TestCase):
     def test_failures_are_collected_and_the_rest_still_convert(self) -> None:
-        def convert(source, output, *, overwrite=False):
+        def convert(source, output, *, overwrite=False, cancel=None):
             if Path(source).name == "bad.docx":
                 raise RuntimeError("LibreOffice could not read it")
             return fake_convert(source, output)
@@ -53,7 +55,38 @@ class RunTests(unittest.TestCase):
         job = Job(Path("/a/report.docx"), Path("/a/report.pdf"), replace=True)
         with patch("doczap.batch.convert_document") as convert:
             run_jobs([job])
-        convert.assert_called_once_with(job.source, job.output, overwrite=True)
+        convert.assert_called_once_with(job.source, job.output, overwrite=True, cancel=None)
+
+
+    def test_cancel_before_start_skips_all_jobs(self) -> None:
+        cancel = threading.Event()
+        cancel.set()
+        with patch("doczap.batch.convert_document") as convert:
+            result = run_jobs(plan_jobs([Path("a.docx")]), cancel=cancel)
+        convert.assert_not_called()
+        self.assertTrue(result.cancelled)
+        self.assertEqual(result.errors, [])
+
+    def test_cancel_during_conversion_stops_remaining_jobs(self) -> None:
+        cancel = threading.Event()
+        with patch("doczap.batch.convert_document", side_effect=ConversionCancelled()) as convert:
+            result = run_jobs(plan_jobs([Path("a.docx"), Path("b.docx")]), cancel=cancel)
+        self.assertEqual(convert.call_count, 1)
+        self.assertEqual(convert.call_args.kwargs["cancel"], cancel)
+        self.assertTrue(result.cancelled)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.converted, [])
+
+    def test_cancel_after_one_success_preserves_completed_job(self) -> None:
+        cancel = threading.Event()
+        def convert(source, output, **kwargs):
+            cancel.set()
+        with patch("doczap.batch.convert_document", side_effect=convert) as convert:
+            result = run_jobs(plan_jobs([Path("a.docx"), Path("b.docx")]), cancel=cancel)
+        self.assertEqual(convert.call_count, 1)
+        self.assertEqual([job.source.name for job in result.converted], ["a.docx"])
+        self.assertTrue(result.cancelled)
+        self.assertEqual(format_summary(result), "Created a.pdf. Conversion cancelled.")
 
 
 class SummaryTests(unittest.TestCase):

@@ -48,7 +48,7 @@ class ConversionTests(unittest.TestCase):
 
             expected = input_path.resolve().with_suffix(".pdf")
             self.assertEqual(result, expected)
-            converter.convert.assert_called_once_with(str(input_path.resolve()), str(expected), overwrite=False)
+            converter.convert.assert_called_once_with(str(input_path.resolve()), str(expected), overwrite=False, cancel=None)
 
     def test_existing_default_output_is_not_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -93,7 +93,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
     def test_cached_profile_is_reused_when_free(self) -> None:
         with tempfile.TemporaryDirectory() as output_dir:
             with patch(
-                "doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
+                "doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"pdf")
             ) as run:
                 LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
@@ -105,7 +105,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             self.assertTrue(system.try_lock(held))
             with tempfile.TemporaryDirectory() as output_dir:
                 with patch(
-                    "doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
+                    "doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"pdf")
                 ) as run:
                     LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
@@ -114,7 +114,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
     def run_with_fake_soffice(self) -> None:
         with tempfile.TemporaryDirectory() as output_dir:
-            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")):
+            with patch("doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"pdf")):
                 LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
     def test_profile_blocks_remote_links(self) -> None:
@@ -145,7 +145,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
     def test_timeout_is_bounded_and_reported(self) -> None:
         timeout = subprocess.TimeoutExpired(cmd=["soffice"], timeout=1)
-        with patch("doczap.converters.libreoffice.subprocess.run", side_effect=timeout):
+        with patch("doczap.converters.libreoffice.run_process", side_effect=timeout):
             converter = LibreOfficeConverter(timeout_seconds=1)
             with self.assertRaisesRegex(RuntimeError, "timed out after 1 seconds"):
                 converter._run_soffice(Path("input.docx"), Path("."))
@@ -154,7 +154,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
         with (
             patch("doczap.converters.libreoffice.soffice_environment", return_value={"EXTRA": "1"}),
             tempfile.TemporaryDirectory() as output_dir,
-            patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")) as run,
+            patch("doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"pdf")) as run,
         ):
             LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
 
@@ -166,7 +166,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             with patch(
-                "doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")
+                "doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"pdf")
             ) as run:
                 LibreOfficeConverter()._run_soffice(Path("report.docx"), output_dir)
 
@@ -179,7 +179,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             src.touch()
             dst.write_bytes(b"old pdf")
 
-            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(None)):
+            with patch("doczap.converters.libreoffice.run_process", side_effect=fake_soffice(None)):
                 with self.assertRaisesRegex(RuntimeError, "could not be loaded"):
                     LibreOfficeConverter().convert(str(src), str(dst), overwrite=True)
 
@@ -197,7 +197,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             src = Path(temp_dir) / "report.docx"
             src.touch()
-            with patch("doczap.converters.libreoffice.subprocess.run", return_value=noisy):
+            with patch("doczap.converters.libreoffice.run_process", return_value=noisy):
                 with self.assertRaises(RuntimeError) as raised:
                     LibreOfficeConverter().convert(str(src), str(src.with_suffix(".pdf")))
 
@@ -212,7 +212,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             src.touch()
             dst.write_bytes(b"old pdf")
 
-            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
+            with patch("doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"new pdf")):
                 LibreOfficeConverter().convert(str(src), str(dst), overwrite=True)
 
             self.assertEqual(dst.read_bytes(), b"new pdf")
@@ -223,7 +223,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             dst = Path(temp_dir) / "final.pdf"
             src.touch()
 
-            with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
+            with patch("doczap.converters.libreoffice.run_process", side_effect=fake_soffice(b"new pdf")):
                 LibreOfficeConverter().convert(str(src), str(dst), overwrite=True)
 
             self.assertEqual(dst.read_bytes(), b"new pdf")

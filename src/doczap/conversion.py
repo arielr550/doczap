@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from doczap.converters.base import Converter
 from doczap.converters.libreoffice import LibreOfficeConverter
+from doczap.process import check_cancelled
 from doczap.utils.file_ops import ensure_supported_input, validate_input_path, validate_output_path
 
 
@@ -26,8 +28,10 @@ def convert_document(
     output_file: str | Path | None = None,
     *,
     overwrite: bool = False,
+    cancel: threading.Event | None = None,
 ) -> Path:
     """Validate and convert one document, returning the final PDF path."""
+    check_cancelled(cancel)
     input_path = Path(input_file).expanduser().resolve()
     output_path = (
         Path(output_file).expanduser()
@@ -42,5 +46,5 @@ def convert_document(
     ensure_supported_input(input_path)
     validate_output_path(output_path, overwrite=overwrite, input_path=input_path)
     converter = select_converter(input_path, output_path)
-    converter.convert(str(input_path), str(output_path), overwrite=overwrite)
+    converter.convert(str(input_path), str(output_path), overwrite=overwrite, cancel=cancel)
     return output_path

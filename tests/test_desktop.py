@@ -7,10 +7,11 @@ destroying the first can crash Tk on macOS.
 from __future__ import annotations
 
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 try:
     import tkinter as tk
@@ -28,7 +29,7 @@ def tearDownModule() -> None:
         ROOT.destroy()
 
 
-def fake_convert(source, output, *, overwrite=False):
+def fake_convert(source, output, *, overwrite=False, cancel=None):
     Path(output).write_bytes(b"%PDF")
     return Path(output)
 
@@ -112,6 +113,67 @@ class DesktopWindowTests(unittest.TestCase):
 
         convert.assert_not_called()
         self.assertEqual(app.sources, [report])
+
+
+@unittest.skipUnless("desktop" in globals(), "Tk module is unavailable")
+class DesktopShutdownTests(unittest.TestCase):
+    """Shutdown coordination needs no display: only the worker and Tk callbacks."""
+    def app(self):
+        app = desktop.App.__new__(desktop.App)
+        app.root = Mock()
+        app.status = Mock()
+        app.worker = Mock()
+        app.worker.is_alive.return_value = True
+        app.cancel = threading.Event()
+        app.closing = False
+        app.busy = True
+        return app
+
+    def test_confirmed_quit_cancels_then_waits_for_worker(self) -> None:
+        app = self.app()
+        with patch("doczap.desktop.messagebox.askokcancel", return_value=True) as question:
+            app.quit()
+            app.quit()
+        self.assertEqual(question.call_count, 1)
+        self.assertTrue(app.cancel.is_set())
+        self.assertTrue(app.closing)
+        app.root.destroy.assert_not_called()
+        app.poll()
+        app.root.after.assert_called_once_with(50, app.poll_shutdown)
+        app.root.destroy.assert_not_called()
+        app.worker.is_alive.return_value = False
+        app.poll_shutdown()
+        app.root.destroy.assert_called_once_with()
+
+    def test_declined_quit_leaves_conversion_running(self) -> None:
+        app = self.app()
+        with patch("doczap.desktop.messagebox.askokcancel", return_value=False):
+            app.quit()
+        self.assertFalse(app.cancel.is_set())
+        self.assertFalse(app.closing)
+        app.root.destroy.assert_not_called()
+
+    def test_idle_quit_closes_without_question(self) -> None:
+        app = self.app()
+        app.busy = False
+        with patch("doczap.desktop.messagebox.askokcancel") as question:
+            app.quit()
+        question.assert_not_called()
+        app.root.destroy.assert_called_once_with()
+
+
+@unittest.skipUnless("desktop" in globals(), "requires Tk module")
+class DesktopEntryTests(unittest.TestCase):
+    def test_packaged_conversion_mode_does_not_open_a_window(self) -> None:
+        with (
+            patch("sys.argv", ["DocZap", "--convert", "report.docx", "report.pdf", "--overwrite"]),
+            patch("doczap.cli.convert_document", return_value=Path("report.pdf")) as convert,
+            patch("doczap.desktop.tk.Tk") as window,
+            self.assertLogs(level="INFO"),
+        ):
+            self.assertEqual(desktop.main(), 0)
+        window.assert_not_called()
+        convert.assert_called_once_with("report.docx", "report.pdf", overwrite=True)
 
 
 if __name__ == "__main__":

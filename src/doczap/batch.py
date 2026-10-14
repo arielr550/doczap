@@ -5,11 +5,13 @@ Kept free of any GUI code so it can be tested without a display.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from doczap.conversion import convert_document, default_output_path
+from doczap.process import ConversionCancelled, check_cancelled
 
 
 @dataclass
@@ -23,6 +25,7 @@ class Job:
 class Result:
     converted: list[Job] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    cancelled: bool = False
 
 
 def plan_jobs(sources: Iterable[Path], output_dir: Path | None = None) -> list[Job]:
@@ -33,11 +36,17 @@ def plan_jobs(sources: Iterable[Path], output_dir: Path | None = None) -> list[J
     ]
 
 
-def run_jobs(jobs: Iterable[Job], on_start: Callable[[Job], None] = lambda job: None) -> Result:
+def run_jobs(
+    jobs: Iterable[Job], on_start: Callable[[Job], None] = lambda job: None,
+    *, cancel: threading.Event | None = None,
+) -> Result:
     """Convert each job in turn, collecting failures instead of stopping at the first."""
     result = Result()
     claimed: set[Path] = set()
     for job in jobs:
+        if cancel is not None and cancel.is_set():
+            result.cancelled = True
+            break
         on_start(job)
         # Two documents with the same name sent to one folder would otherwise
         # silently replace each other's PDF.
@@ -49,7 +58,11 @@ def run_jobs(jobs: Iterable[Job], on_start: Callable[[Job], None] = lambda job: 
             continue
         claimed.add(job.output)
         try:
-            convert_document(job.source, job.output, overwrite=job.replace)
+            check_cancelled(cancel)
+            convert_document(job.source, job.output, overwrite=job.replace, cancel=cancel)
+        except ConversionCancelled:
+            result.cancelled = True
+            break
         except Exception as exc:
             result.errors.append(f"{job.source.name}: {exc}")
         else:
@@ -67,6 +80,8 @@ def format_summary(result: Result, skipped: int = 0) -> str:
         parts.append(f"Created {result.converted[0].output.name}.")
     elif result.converted:
         parts.append(f"Created {plural(len(result.converted), 'PDF')}.")
+    if result.cancelled:
+        parts.append("Conversion cancelled.")
     if skipped:
         parts.append(f"Skipped {plural(skipped, 'existing PDF')}.")
     if result.errors:
