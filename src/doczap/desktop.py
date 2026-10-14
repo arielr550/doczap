@@ -43,6 +43,9 @@ class App:
         self.status = tk.StringVar(value=EMPTY_HINT)
         self.events: queue.Queue[tuple] = queue.Queue()
         self.busy = False
+        self.closing = False
+        self.cancel = threading.Event()
+        self.worker: threading.Thread | None = None
         self.started = 0
         self.last_output: Path | None = None
 
@@ -173,6 +176,7 @@ class App:
         if sys.platform == "darwin":
             # Documents dropped on the Dock icon or opened with "Open With".
             root.createcommand("::tk::mac::OpenDocument", lambda *paths: self.add_files(paths))
+            root.createcommand("::tk::mac::Quit", self.quit)
 
         self.refresh_list()
 
@@ -281,7 +285,9 @@ class App:
         self.set_busy(True)
         self.started = 0
         self.progress.configure(maximum=len(jobs), value=0)
-        threading.Thread(target=self.work, args=(jobs, skipped), daemon=True).start()
+        self.cancel.clear()
+        self.worker = threading.Thread(target=self.work, args=(jobs, skipped))
+        self.worker.start()
         self.root.after(100, self.poll)
 
     def ask_replace(self, existing: list[Job]) -> bool | None:
@@ -306,10 +312,15 @@ class App:
 
     def work(self, jobs: list[Job], skipped: int) -> None:
         # Runs on a background thread, so it only talks to the window through the queue.
-        result = run_jobs(jobs, on_start=lambda job: self.events.put(("start", job)))
+        result = run_jobs(
+            jobs, on_start=lambda job: self.events.put(("start", job)), cancel=self.cancel
+        )
         self.events.put(("done", result, skipped))
 
     def poll(self) -> None:
+        if self.closing:
+            self.poll_shutdown()
+            return
         while True:
             try:
                 event = self.events.get_nowait()
@@ -375,13 +386,29 @@ class App:
         # On macOS a default button stays blue even when disabled.
         self.convert_button.configure(default="active" if can_convert else "normal")
 
+    def poll_shutdown(self) -> None:
+        # Tk stays responsive until the worker has stopped the renderer and
+        # released the profile lock. Never destroy Tk while it is still working.
+        if self.worker is not None and self.worker.is_alive():
+            self.root.after(50, self.poll_shutdown)
+        else:
+            self.root.destroy()
+
     def quit(self) -> None:
+        if self.closing:
+            return
         if self.busy and not messagebox.askokcancel(
             "Quit DocZap?",
             "A conversion is still running. Quit anyway?",
             icon=messagebox.WARNING,
             parent=self.root,
         ):
+            return
+        if self.busy:
+            self.closing = True
+            self.cancel.set()
+            self.status.set("Stopping conversion…")
+            # The existing poll callback takes over shutdown.
             return
         self.root.destroy()
 
