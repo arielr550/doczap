@@ -3,6 +3,8 @@ name: Tests
 on:
   push:
     branches: [main]
+    # Pushing a version tag such as v0.1.0 also publishes a GitHub Release.
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -44,9 +46,29 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install --cask libreoffice
 
+      # The same pinned installer as the Windows app. Chocolatey's feed timed
+      # out often enough to fail runs.
+      - name: Cache the LibreOffice installer
+        id: libreoffice-cache
+        if: runner.os == 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: libreoffice.msi
+          key: libreoffice-${{ env.LIBREOFFICE_BUILD }}-win-x64
+
+      - name: Download the LibreOffice installer
+        if: runner.os == 'Windows' && steps.libreoffice-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: >
+          curl -fsSL -o libreoffice.msi
+          "https://downloadarchive.documentfoundation.org/libreoffice/old/${LIBREOFFICE_BUILD}/win/x86_64/LibreOffice_${LIBREOFFICE_BUILD}_Win_x86-64.msi"
+
       - name: Install LibreOffice (Windows)
         if: runner.os == 'Windows'
-        run: choco install libreoffice-fresh --yes --no-progress
+        shell: bash
+        run: |
+          echo "${LIBREOFFICE_SHA256}  libreoffice.msi" | sha256sum --check
+          cmd //c "msiexec /i libreoffice.msi /qn /norestart"
 
       # The integration tests skip themselves when soffice is missing, so a
       # broken install would otherwise pass silently.
@@ -74,6 +96,22 @@ jobs:
             exit 1
           fi
           kill "$pid"
+
+      - name: Check the macOS installer
+        if: runner.os == 'macOS' && matrix.python == '3.14'
+        run: |
+          apps=$(mktemp -d)
+          DOCZAP_ZIP_URL="file://$PWD/dist/DocZap-macos-arm64.zip" DOCZAP_APPS_DIR="$apps" sh install.sh
+          codesign --verify --deep "$apps/DocZap.app"
+
+      - name: Upload the macOS app
+        if: runner.os == 'macOS' && matrix.python == '3.14'
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/DocZap-macos-arm64.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
 
 
   # The portable Windows build, on a runner without LibreOffice installed, as
@@ -161,7 +199,42 @@ jobs:
       - name: Upload the Windows app
         uses: actions/upload-artifact@v7
         with:
-          path: dist/DocZap-*-windows-x64.zip
+          path: dist/DocZap-windows-x64.zip
           archive: false
+          if-no-files-found: error
           retention-days: 14
 
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, windows-app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check that the tag matches the version
+        run: |
+          version=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version in pyproject.toml"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: DocZap-*.zip
+          path: dist
+          merge-multiple: true
+          # The artifacts are the release zips themselves; keep them zipped.
+          skip-decompress: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          dist/DocZap-macos-arm64.zip dist/DocZap-windows-x64.zip
+          --title "DocZap $GITHUB_REF_NAME"
+          --generate-notes
