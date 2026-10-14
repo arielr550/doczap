@@ -14,3 +14,7 @@ doczap = "doczap.cli:main"
 [build-system]
 requires = ["uv_build>=0.9,<0.13"]
 build-backend = "uv_build"
+
+[dependency-groups]
+# Only needed to build the desktop app: uv run --managed-python --group build ...
+build = ["pyinstaller>=6.16", "pillow>=11"]

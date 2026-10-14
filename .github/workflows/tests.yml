@@ -51,8 +51,23 @@ jobs:
         run: uv run python -c "import sys; from doczap.converters.libreoffice import find_soffice; sys.exit(find_soffice() is None)"
 
       - name: Run tests
-        run: uv run python -m unittest discover -s tests -v
+        # faulthandler prints a traceback if Tk crashes the interpreter.
+        run: uv run python -X faulthandler -m unittest discover -s tests -v
 
       - name: Build the macOS app
         if: runner.os == 'macOS'
-        run: uv run python scripts/build_macos_app.py
+        run: uv run --group build python scripts/build_app.py
+
+      # A missing module or data file makes the frozen app exit at once, so an
+      # app still running after a few seconds has at least opened its window.
+      - name: Check that the macOS app starts
+        if: runner.os == 'macOS'
+        run: |
+          dist/DocZap.app/Contents/MacOS/DocZap &
+          pid=$!
+          sleep 10
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "DocZap exited during startup"
+            exit 1
+          fi
+          kill "$pid"
