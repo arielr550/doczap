@@ -1,6 +1,7 @@
 """Build the DocZap desktop app with PyInstaller.
 
-macOS writes dist/DocZap.app, which needs LibreOffice installed:
+macOS writes dist/DocZap.app, which needs LibreOffice installed, and a zip of
+it for releases:
 
     uv run --managed-python --group build python scripts/build_app.py
 
@@ -16,6 +17,7 @@ Python does not.
 from __future__ import annotations
 
 import argparse
+import platform
 import plistlib
 import re
 import shutil
@@ -124,7 +126,13 @@ def build_macos() -> Path:
 
     # PyInstaller also leaves the unbundled folder next to the app.
     shutil.rmtree(DIST_DIR / APP_NAME, ignore_errors=True)
-    return app
+
+    # ditto keeps the app's symlinks and signature intact, unlike zipfile.
+    archive = DIST_DIR / f"{APP_NAME}-macos-{platform.machine()}.zip"
+    archive.unlink(missing_ok=True)
+    subprocess.run(["ditto", "-c", "-k", "--keepParent", str(app), str(archive)], check=True)
+    print(f"Built {app}")
+    return archive
 
 
 # Windows
@@ -223,7 +231,8 @@ def build_windows(msi: Path) -> Path:
     app_dir = DIST_DIR / APP_NAME
     extract_libreoffice(msi, app_dir / "LibreOffice")
 
-    archive = DIST_DIR / f"{APP_NAME}-{project_version()}-windows-x64"
+    # No version in the name, so the "latest release" download link never changes.
+    archive = DIST_DIR / f"{APP_NAME}-windows-x64"
     archive = Path(shutil.make_archive(str(archive), "zip", root_dir=DIST_DIR, base_dir=APP_NAME))
     print(
         f"{app_dir.name}: {folder_size(app_dir)}, of which LibreOffice "
