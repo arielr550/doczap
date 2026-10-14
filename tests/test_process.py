@@ -11,12 +11,19 @@ import time
 import unittest
 from pathlib import Path
 from contextlib import contextmanager
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from doczap.process import ConversionCancelled, renderer_environment, run_process
+from doczap.process import ConversionCancelled, _wait_group, renderer_environment, run_process
 
 
 def alive(pid: int) -> bool:
+    if sys.platform == "darwin":
+        # kill(pid, 0) can return EPERM for an exited macOS process.
+        result = subprocess.run(
+            ["/bin/ps", "-p", str(pid), "-o", "stat="],
+            capture_output=True, text=True, timeout=2,
+        )
+        return bool(result.stdout.strip()) and not result.stdout.strip().startswith("Z")
     if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
@@ -192,3 +199,22 @@ class EnvironmentTests(unittest.TestCase):
             clean = renderer_environment(env)
         self.assertEqual(clean["PATH"], custom)
         self.assertEqual(clean["DYLD_LIBRARY_PATH"], "")
+
+
+@unittest.skipIf(sys.platform == "win32", "POSIX process groups")
+class ProcessGroupStateTests(unittest.TestCase):
+    def test_permission_error_for_exited_group_is_not_a_cleanup_failure(self) -> None:
+        process = Mock(pid=123)
+        snapshot = subprocess.CompletedProcess([], 0, "123 Z\n456 S\n", "")
+        with patch("doczap.process.os.killpg", side_effect=PermissionError()), patch(
+            "doczap.process.subprocess.run", return_value=snapshot
+        ):
+            self.assertTrue(_wait_group(process, 0.1))
+
+    def test_permission_error_does_not_hide_a_live_descendant(self) -> None:
+        process = Mock(pid=123)
+        snapshot = subprocess.CompletedProcess([], 0, "123 Z\n123 S\n", "")
+        with patch("doczap.process.os.killpg", side_effect=PermissionError()), patch(
+            "doczap.process.subprocess.run", return_value=snapshot
+        ):
+            self.assertFalse(_wait_group(process, 0.05))
