@@ -79,9 +79,6 @@ class ProcessTests(unittest.TestCase):
     def assert_tree_stopped(self) -> None:
         self.assertTrue(self.pids.exists(), "renderer did not start its child")
         pids = [int(value) for value in self.pids.read_text().split()]
-        deadline = time.monotonic() + 5
-        while any(alive(pid) for pid in pids) and time.monotonic() < deadline:
-            time.sleep(0.02)
         self.assertFalse([pid for pid in pids if alive(pid)])
 
     def test_timeout_stops_launcher_and_child_and_next_run_works(self) -> None:

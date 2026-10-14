@@ -43,24 +43,34 @@ def renderer_environment(env: dict[str, str]) -> dict[str, str]:
     return env
 
 
-def _stop_group(process: subprocess.Popen[str]) -> None:
-    """Kill remaining descendants even if the launcher already exited."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    deadline = time.monotonic() + 1
+def _wait_group(process: subprocess.Popen[str], timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         process.poll()  # Reap the launcher while children finish.
         try:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
-            return
+            return True
         time.sleep(0.02)
+    return False
+
+
+def _stop_group(process: subprocess.Popen[str]) -> None:
+    """Stop descendants and wait for the group, even after the launcher exits."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    if _wait_group(process, 1):
+        return
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
-        pass
+        return
+    # A child can close its captured pipes before it exits. Waiting only for
+    # communicate() would release the profile while that child still exists.
+    if not _wait_group(process, 5):
+        raise RuntimeError("Timed out waiting for the renderer process group to stop.")
 
 
 def run_process(
