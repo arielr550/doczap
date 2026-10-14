@@ -9,7 +9,13 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from doczap.converters.base import Converter
-from doczap.system import bundled_soffice, cache_dir, soffice_candidates, try_lock
+from doczap.system import (
+    bundled_soffice,
+    cache_dir,
+    soffice_candidates,
+    soffice_environment,
+    try_lock,
+)
 
 # Name the import filter explicitly. Without it LibreOffice falls back to its
 # plain-text importer for unreadable files and "successfully" renders the raw
@@ -161,6 +167,7 @@ class LibreOfficeConverter(Converter):
                     text=True,
                     check=False,
                     timeout=self.timeout_seconds,
+                    env={**os.environ, **soffice_environment()},
                 )
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError(
