@@ -48,7 +48,7 @@ class ConversionTests(unittest.TestCase):
 
             expected = input_path.resolve().with_suffix(".pdf")
             self.assertEqual(result, expected)
-            converter.convert.assert_called_once_with(str(input_path.resolve()), str(expected))
+            converter.convert.assert_called_once_with(str(input_path.resolve()), str(expected), overwrite=False)
 
     def test_existing_default_output_is_not_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -181,7 +181,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
 
             with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(None)):
                 with self.assertRaisesRegex(RuntimeError, "could not be loaded"):
-                    LibreOfficeConverter().convert(str(src), str(dst))
+                    LibreOfficeConverter().convert(str(src), str(dst), overwrite=True)
 
             self.assertEqual(dst.read_bytes(), b"old pdf")
 
@@ -213,7 +213,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             dst.write_bytes(b"old pdf")
 
             with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
-                LibreOfficeConverter().convert(str(src), str(dst))
+                LibreOfficeConverter().convert(str(src), str(dst), overwrite=True)
 
             self.assertEqual(dst.read_bytes(), b"new pdf")
 
@@ -224,7 +224,7 @@ class LibreOfficeConverterTests(unittest.TestCase):
             src.touch()
 
             with patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"new pdf")):
-                LibreOfficeConverter().convert(str(src), str(dst))
+                LibreOfficeConverter().convert(str(src), str(dst), overwrite=True)
 
             self.assertEqual(dst.read_bytes(), b"new pdf")
             self.assertFalse((Path(temp_dir) / "report.pdf").exists())

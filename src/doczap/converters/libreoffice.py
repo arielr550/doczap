@@ -9,6 +9,8 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from doczap.converters.base import Converter
+from doczap.utils.file_ops import validate_output_path
+from doczap.utils.save_pdf import save_pdf
 from doczap.system import (
     bundled_soffice,
     cache_dir,
@@ -126,22 +128,23 @@ class LibreOfficeConverter(Converter):
         self.soffice_binary = resolved
         self.timeout_seconds = timeout_seconds
 
-    def convert(self, input_path: str, output_path: str) -> None:
+    def convert(self, input_path: str, output_path: str, *, overwrite: bool = False) -> None:
         src = Path(input_path)
         dst = Path(output_path)
+        validate_output_path(dst, overwrite=overwrite, input_path=src)
 
         # Always render into an empty directory: LibreOffice can exit 0 without
         # writing anything, so an existing PDF at dst must never count as output.
-        with tempfile.TemporaryDirectory(prefix="doczap_") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix=".doczap_", dir=dst.parent) as temp_dir:
             temp_dir_path = Path(temp_dir)
             result = self._run_soffice(src, temp_dir_path)
             produced = temp_dir_path / f"{src.stem}.pdf"
-            if not produced.exists():
+            if not produced.is_file():
                 raise RuntimeError(
                     f"LibreOffice did not produce a PDF for {src.name}. "
                     f"stderr='{clean_stderr(result.stderr)}'"
                 )
-            shutil.move(str(produced), str(dst))
+            save_pdf(produced, dst, input_path=src, overwrite=overwrite)
 
     def _run_soffice(self, input_file: Path, output_dir: Path) -> subprocess.CompletedProcess[str]:
         with libreoffice_profile() as profile_dir:
