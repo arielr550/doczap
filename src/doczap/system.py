@@ -40,6 +40,13 @@ def soffice_candidates(platform: str = sys.platform) -> list[Path]:
     ]
 
 
+def bundled_soffice(platform: str = sys.platform) -> Path | None:
+    """The LibreOffice that the Windows build ships next to DocZap.exe, if any."""
+    if platform == "win32" and getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "LibreOffice" / "program" / "soffice.exe"
+    return None
+
+
 def cache_dir(platform: str = sys.platform) -> Path:
     """Per-user cache directory for DocZap."""
     if platform == "darwin":

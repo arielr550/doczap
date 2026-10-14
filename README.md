@@ -7,7 +7,8 @@ shows. Nothing leaves your machine — no cloud APIs, no network calls.
 
 ## Requirements
 
-- LibreOffice — `brew install --cask libreoffice`, or the `.dmg` into `/Applications`
+- LibreOffice — `brew install --cask libreoffice`, or the `.dmg` into `/Applications`.
+  The Windows app includes its own copy.
 - [uv](https://docs.astral.sh/uv/) (Homebrew or the official installer), to run
   DocZap from source or build the app. The built app does not need it.
 
@@ -31,6 +32,26 @@ replaced. The app can be moved to `/Applications` or the Desktop.
 
 To try the window without building, run
 `uv run --managed-python python -m doczap.desktop`.
+
+### Windows app
+
+The Windows build is portable and includes LibreOffice, so there is nothing to
+install. Extract `DocZap-<version>-windows-x64.zip` anywhere and run
+`DocZap.exe` from the `DocZap` folder. It works like the macOS app; you can also
+drop documents on `DocZap.exe`.
+
+The app is not code-signed, so the first time Windows may show "Windows
+protected your PC". Choose **More info**, then **Run anyway**.
+
+To build it on Windows, download the LibreOffice installer
+(`LibreOffice_<version>_Win_x86-64.msi` from libreoffice.org) and run:
+
+```powershell
+uv run --managed-python --group build python scripts/build_app.py --libreoffice-msi LibreOffice_<version>_Win_x86-64.msi
+```
+
+CI builds the zip on every pull request and keeps it for 14 days as a workflow
+artifact.
 
 ### Command line
 

@@ -12,6 +12,9 @@ env:
   # The Homebrew Python on the macOS runners takes 35 seconds to resolve
   # 127.0.0.1, which the integration tests' local HTTP server does at startup.
   UV_MANAGED_PYTHON: "1"
+  # The LibreOffice bundled into the Windows build: the mature "still" branch.
+  LIBREOFFICE_BUILD: 26.2.6.3
+  LIBREOFFICE_SHA256: f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660
 
 jobs:
   test:
@@ -71,3 +74,94 @@ jobs:
             exit 1
           fi
           kill "$pid"
+
+
+  # The portable Windows build, on a runner without LibreOffice installed, as
+  # most users' PCs are: everything it needs has to come from the bundle.
+  windows-app:
+    name: Windows app
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.14"
+          enable-cache: false
+
+      - name: Cache the LibreOffice installer
+        id: libreoffice-cache
+        uses: actions/cache@v6
+        with:
+          path: libreoffice.msi
+          key: libreoffice-${{ env.LIBREOFFICE_BUILD }}-win-x64
+
+      - name: Download the LibreOffice installer
+        if: steps.libreoffice-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: >
+          curl -fsSL -o libreoffice.msi
+          "https://downloadarchive.documentfoundation.org/libreoffice/old/${LIBREOFFICE_BUILD}/win/x86_64/LibreOffice_${LIBREOFFICE_BUILD}_Win_x86-64.msi"
+
+      - name: Build the Windows app
+        shell: bash
+        run: |
+          echo "${LIBREOFFICE_SHA256}  libreoffice.msi" | sha256sum --check
+          uv run --group build python scripts/build_app.py --libreoffice-msi libreoffice.msi
+
+      - name: Convert with the bundled LibreOffice
+        shell: bash
+        run: |
+          export PATH="$PWD/dist/DocZap/LibreOffice/program:$PATH"
+          uv run python -m unittest discover -s tests -p test_integration.py -v
+
+      # LibreOffice's installer normally puts most of these fonts into
+      # C:\Windows\Fonts, and OpenSymbol draws bullets. The bundle has to provide
+      # them itself, or documents using them reflow.
+      - name: Check that the bundled fonts are used
+        shell: bash
+        run: |
+          export PATH="$PWD/dist/DocZap/LibreOffice/program:$PATH"
+          uv run python - <<'EOF'
+          import sys, tempfile, zipfile
+          from pathlib import Path
+          sys.path.insert(0, "tests")
+          import test_integration as ti
+          from doczap.conversion import convert_document
+
+          # OpenSymbol has hardly any letters, so it gets bullet characters.
+          samples = {"Carlito": "Carlito", "Caladea": "Caladea", "Liberation Serif": "Liberation", "OpenSymbol": "\u25cf\u2022\u25a0"}
+          body = "".join(
+              f'<w:p><w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/></w:rPr><w:t>{text}</w:t></w:r></w:p>'
+              for font, text in samples.items()
+          )
+          document = ti.DOCUMENT.replace(
+              "<w:p><w:r><w:t>Hello from DocZap</w:t></w:r></w:p>", body
+          )
+          with tempfile.TemporaryDirectory() as temp_dir:
+              source = Path(temp_dir) / "fonts.docx"
+              with zipfile.ZipFile(source, "w") as docx:
+                  docx.writestr("[Content_Types].xml", ti.CONTENT_TYPES)
+                  docx.writestr("_rels/.rels", ti.RELS)
+                  docx.writestr("word/document.xml", document)
+              pdf = convert_document(source).read_bytes()
+          missing = [name for name in (b"Carlito", b"Caladea", b"LiberationSerif", b"OpenSymbol") if name not in pdf]
+          print("missing fonts:", missing)
+          sys.exit(1 if missing else 0)
+          EOF
+
+      - name: Check that the Windows app starts
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath dist\DocZap\DocZap.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($app.HasExited) { throw "DocZap exited during startup with code $($app.ExitCode)" }
+          Stop-Process -Id $app.Id
+
+      - name: Upload the Windows app
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/DocZap-*-windows-x64.zip
+          archive: false
+          retention-days: 14
+

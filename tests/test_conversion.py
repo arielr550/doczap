@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -232,6 +233,18 @@ class SystemTests(unittest.TestCase):
                 [Path("C:\\Program Files") / "LibreOffice" / "program" / "soffice.exe"],
             )
 
+    def test_bundled_soffice_only_in_the_frozen_windows_build(self) -> None:
+        self.assertIsNone(system.bundled_soffice("win32"))
+        with (
+            patch.object(sys, "frozen", True, create=True),
+            patch.object(sys, "executable", str(Path("/DocZap/DocZap.exe"))),
+        ):
+            self.assertEqual(
+                system.bundled_soffice("win32"),
+                Path("/DocZap") / "LibreOffice" / "program" / "soffice.exe",
+            )
+            self.assertIsNone(system.bundled_soffice("darwin"))
+
     def test_cache_dir_follows_platform_conventions(self) -> None:
         self.assertEqual(
             system.cache_dir("darwin"), Path.home() / "Library" / "Caches" / "doczap"
@@ -253,6 +266,16 @@ class SystemTests(unittest.TestCase):
 
 
 class SofficeLookupTests(unittest.TestCase):
+    def test_bundled_copy_wins_over_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundled = Path(temp_dir) / "soffice.exe"
+            bundled.touch()
+            with (
+                patch("doczap.converters.libreoffice.bundled_soffice", return_value=bundled),
+                patch("doczap.converters.libreoffice.shutil.which", return_value="/usr/bin/soffice"),
+            ):
+                self.assertEqual(LibreOfficeConverter().soffice_binary, str(bundled))
+
     def test_falls_back_to_standard_install_location(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             bundled = Path(temp_dir) / "soffice"
