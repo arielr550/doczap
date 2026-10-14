@@ -70,6 +70,12 @@ class NativeInstallerTests(unittest.TestCase):
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(self.app)], check=True)
         self.assertEqual(list(self.apps.iterdir()), [self.app])
 
+        subprocess.run(
+            [sys.executable, str(ROOT / "scripts/check_app.py"), str(self.app / "Contents/MacOS/DocZap")],
+            check=True,
+            timeout=120,
+        )
+
     def test_missing_bundle_preserves_v010(self) -> None:
         archive = self.folder / "missing.zip"
         with zipfile.ZipFile(archive, "w") as contents:

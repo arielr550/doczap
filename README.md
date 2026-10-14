@@ -40,6 +40,15 @@ choose whether each PDF goes next to its document or into one folder, and click
 
 ### Command line
 
+The desktop app also accepts `--convert` to convert without opening a window:
+
+```bash
+/Applications/DocZap.app/Contents/MacOS/DocZap --convert report.docx
+```
+
+On Windows, use `DocZap.exe --convert report.docx`. An optional second path sets
+the output PDF; add `--overwrite` only when you want to replace an existing PDF.
+
 From a clone of this repository (needs [uv](https://docs.astral.sh/uv/) and
 LibreOffice), save the PDF beside the DOCX:
 
@@ -92,6 +101,9 @@ git tag v0.1.0 && git push origin v0.1.0
 
 CI runs the tests, builds both apps, and publishes a GitHub Release with
 `DocZap-macos-arm64.zip` and `DocZap-windows-x64.zip`.
+CI checks real conversions through both packaged apps. After publication, it
+downloads the released macOS archive and verifies updates from v0.1.0, recovery
+from failed updates, and conversion through the installed app.
 
 ## Fonts
 
@@ -122,9 +134,13 @@ Aptos as a download on its [Aptos font page](https://learn.microsoft.com/en-us/t
 ## Notes
 
 - Runs only when you open it — no login item, background service, or watcher.
-- LibreOffice exits after each conversion, with a 60-second timeout.
+- LibreOffice exits after each conversion, with a 60-second timeout. On timeout
+  or when you quit during conversion, DocZap stops the renderer and its child
+  processes before cleaning up.
 - Web-linked images are not downloaded, so they are left out of the PDF.
-- Converts into a temporary file first, so a failed run never leaves a stale PDF.
+- Renders beside the destination and saves the complete PDF in one operation.
+  A failed conversion or save preserves any existing PDF. Output symlinks,
+  directories, and paths that refer to the source document are rejected.
 
 ## Extending
 
