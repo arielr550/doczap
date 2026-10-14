@@ -110,6 +110,7 @@ jobs:
         with:
           path: dist/DocZap-macos-arm64.zip
           archive: false
+          if-no-files-found: error
           retention-days: 14
 
 
@@ -198,8 +199,9 @@ jobs:
       - name: Upload the Windows app
         uses: actions/upload-artifact@v7
         with:
-          path: dist/DocZap-*-windows-x64.zip
+          path: dist/DocZap-windows-x64.zip
           archive: false
+          if-no-files-found: error
           retention-days: 14
 
   release:
