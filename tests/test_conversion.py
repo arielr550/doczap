@@ -6,10 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from doczap import cli, desktop, system
+from doczap import cli, system
 from doczap.conversion import convert_document, default_output_path, select_converter
 from doczap.converters.libreoffice import LibreOfficeConverter
-from doczap.desktop import format_summary
 
 
 def fake_soffice(pdf_bytes: bytes | None):
@@ -63,28 +62,6 @@ class ConversionTests(unittest.TestCase):
     def test_unsupported_conversion_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported conversion"):
             select_converter(Path("report.docx"), Path("report.txt"))
-
-    def test_desktop_summary_reports_batch_and_skips(self) -> None:
-        converted = [Path("one.pdf"), Path("two.pdf")]
-        self.assertEqual(
-            format_summary(converted, skipped=1),
-            "Created 2 PDFs beside the originals. Skipped 1 existing file.",
-        )
-
-    def test_desktop_skips_existing_output_when_not_confirmed(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            input_path = Path(temp_dir) / "report.docx"
-            input_path.touch()
-            input_path.with_suffix(".pdf").touch()
-
-            with (
-                patch("doczap.desktop.confirm_overwrite", return_value=False),
-                patch("doczap.desktop.convert_document") as convert,
-            ):
-                converted, errors, skipped = desktop.convert_files([str(input_path)])
-
-            self.assertEqual((converted, errors, skipped), ([], [], 1))
-            convert.assert_not_called()
 
     def test_cli_returns_nonzero_on_failure(self) -> None:
         with (

@@ -7,8 +7,9 @@ shows. Nothing leaves your machine — no cloud APIs, no network calls.
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/) (Homebrew or the official installer)
 - LibreOffice — `brew install --cask libreoffice`, or the `.dmg` into `/Applications`
+- [uv](https://docs.astral.sh/uv/) (Homebrew or the official installer), to run
+  DocZap from source or build the app. The built app does not need it.
 
 ## Usage
 
@@ -17,12 +18,19 @@ shows. Nothing leaves your machine — no cloud APIs, no network calls.
 Build it once (and again after changing the source):
 
 ```bash
-uv run --offline python scripts/build_macos_app.py
+uv run --managed-python --group build python scripts/build_app.py
 ```
 
-Open `dist/DocZap.app` and pick one or more Word documents, or drag DOCX files
-onto it. Each PDF is saved next to its original, and you're asked before anything
-is replaced. The app can be moved to `/Applications` or the Desktop.
+The first build downloads PyInstaller. `--managed-python` matters: the app window
+needs Tk, which Homebrew's Python leaves out.
+
+Open `dist/DocZap.app`, add one or more Word documents (or drop them on the
+DocZap icon), choose whether each PDF goes next to its document or into one
+folder, and click **Convert to PDF**. You're asked before any existing PDF is
+replaced. The app can be moved to `/Applications` or the Desktop.
+
+To try the window without building, run
+`uv run --managed-python python -m doczap.desktop`.
 
 ### Command line
 

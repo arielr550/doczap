@@ -7,6 +7,7 @@ converters and front ends stay platform-neutral.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import IO
@@ -63,3 +64,34 @@ def try_lock(file: IO[str]) -> bool:
     except OSError:
         return False
     return True
+
+
+def file_manager_name(platform: str = sys.platform) -> str:
+    if platform == "darwin":
+        return "Finder"
+    if platform == "win32":
+        return "File Explorer"
+    return "File Manager"
+
+
+def reveal(path: Path) -> None:
+    """Show a file in the system file manager, selected where the platform allows."""
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    elif sys.platform == "win32":
+        # Explorer only accepts the quoted path glued to /select, so this has to
+        # be a command string rather than an argument list.
+        subprocess.Popen(f'explorer /select,"{path}"')
+    else:
+        subprocess.Popen(["xdg-open", str(path.parent)])
+
+
+def enable_high_dpi() -> None:
+    """Stop Windows from drawing the window as a blurry, upscaled bitmap."""
+    if sys.platform == "win32":
+        import ctypes
+
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except (AttributeError, OSError):
+            pass
