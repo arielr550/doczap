@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import tempfile
 import threading
 import unittest
@@ -49,11 +50,20 @@ LINKED_IMAGE_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </Relationships>"""
 
 
-def write_minimal_docx(path: Path) -> None:
+PLAIN_PARAGRAPH = "<w:p><w:r><w:t>Hello from DocZap</w:t></w:r></w:p>"
+
+# A font every installation of the system has, and its name inside a PDF.
+SYSTEM_FONTS = {
+    "darwin": ("Helvetica", b"Helvetica"),
+    "win32": ("Segoe UI", b"SegoeUI"),
+}
+
+
+def write_minimal_docx(path: Path, document: str = DOCUMENT) -> None:
     with zipfile.ZipFile(path, "w") as docx:
         docx.writestr("[Content_Types].xml", CONTENT_TYPES)
         docx.writestr("_rels/.rels", RELS)
-        docx.writestr("word/document.xml", DOCUMENT)
+        docx.writestr("word/document.xml", document)
 
 
 @unittest.skipUnless(find_soffice(), "LibreOffice (soffice) is not installed")
@@ -95,6 +105,23 @@ class LibreOfficeIntegrationTests(unittest.TestCase):
 
             for output in outputs:
                 self.assertTrue(output.read_bytes().startswith(b"%PDF"))
+
+    @unittest.skipUnless(sys.platform in SYSTEM_FONTS, "no known system font to check")
+    def test_system_fonts_are_used(self) -> None:
+        # Headless LibreOffice on macOS once saw only its own bundled fonts and
+        # replaced every macOS font, so check that a system font is embedded.
+        font, embedded_name = SYSTEM_FONTS[sys.platform]
+        body = (
+            f'<w:p><w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/></w:rPr>'
+            f"<w:t>Set in {font}</w:t></w:r></w:p>"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "font.docx"
+            write_minimal_docx(input_path, DOCUMENT.replace(PLAIN_PARAGRAPH, body))
+
+            output_path = convert_document(input_path)
+
+            self.assertIn(embedded_name, output_path.read_bytes())
 
     def test_remote_linked_image_is_not_fetched(self) -> None:
         requests: list[str] = []

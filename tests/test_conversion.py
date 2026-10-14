@@ -150,6 +150,18 @@ class LibreOfficeConverterTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "timed out after 1 seconds"):
                 converter._run_soffice(Path("input.docx"), Path("."))
 
+    def test_soffice_environment_is_passed_on(self) -> None:
+        with (
+            patch("doczap.converters.libreoffice.soffice_environment", return_value={"EXTRA": "1"}),
+            tempfile.TemporaryDirectory() as output_dir,
+            patch("doczap.converters.libreoffice.subprocess.run", side_effect=fake_soffice(b"pdf")) as run,
+        ):
+            LibreOfficeConverter()._run_soffice(Path("report.docx"), Path(output_dir))
+
+        env = run.call_args.kwargs["env"]
+        self.assertEqual(env["EXTRA"], "1")
+        self.assertIn("PATH", env)
+
     def test_docx_import_filter_is_forced(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -244,6 +256,11 @@ class SystemTests(unittest.TestCase):
                 Path("/DocZap") / "LibreOffice" / "program" / "soffice.exe",
             )
             self.assertIsNone(system.bundled_soffice("darwin"))
+
+    def test_soffice_uses_the_native_macos_font_backend(self) -> None:
+        self.assertEqual(system.soffice_environment("darwin"), {"SAL_USE_VCLPLUGIN": "osx"})
+        self.assertEqual(system.soffice_environment("win32"), {})
+        self.assertEqual(system.soffice_environment("linux"), {})
 
     def test_cache_dir_follows_platform_conventions(self) -> None:
         self.assertEqual(

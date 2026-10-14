@@ -47,6 +47,17 @@ def bundled_soffice(platform: str = sys.platform) -> Path | None:
     return None
 
 
+def soffice_environment(platform: str = sys.platform) -> dict[str, str]:
+    """Environment variables soffice needs on top of the inherited ones."""
+    if platform == "darwin":
+        # With --headless, LibreOffice on macOS switches to a font backend that
+        # only sees its own bundled fonts, so Helvetica, Georgia, Verdana and
+        # every other macOS font got replaced. The native macOS backend renders
+        # without a window too and sees all installed fonts.
+        return {"SAL_USE_VCLPLUGIN": "osx"}
+    return {}
+
+
 def cache_dir(platform: str = sys.platform) -> Path:
     """Per-user cache directory for DocZap."""
     if platform == "darwin":

@@ -69,16 +69,29 @@ uv run --offline python main.py input.docx output.pdf
 
 ## Fonts
 
-Pagination only matches Word when the document's fonts are available to
-LibreOffice. Microsoft's defaults (Calibri, Cambria) are usually missing on a Mac,
-and missing fonts are silently substituted, which shifts line breaks and page
-counts. Install the metric-compatible replacements:
+A missing font never makes a conversion fail. LibreOffice substitutes another
+font instead, and if the substitute is wider or narrower, line breaks and page
+counts change.
 
-```bash
-brew install --cask font-carlito font-caladea
-```
+DocZap uses every font installed on the computer. LibreOffice also brings
+look-alikes with identical spacing for Word's most common fonts, so these keep
+their layout even where the original is missing:
 
-For other fonts (Aptos, for example), install the font files system-wide.
+| Font in the document | Replaced by, when missing |
+|---|---|
+| Calibri | Carlito |
+| Cambria | Caladea |
+| Arial, Arial Narrow | Liberation Sans, Liberation Sans Narrow |
+| Times New Roman | Liberation Serif |
+| Courier New | Liberation Mono |
+
+Windows includes nearly all of Office's fonts. macOS includes Arial, Georgia,
+Verdana, Tahoma, Trebuchet MS and others, but not Office-only fonts such as
+Calibri Light, Segoe UI, Consolas, Candara or Corbel; Word for Mac keeps its
+copies to itself. Aptos, the default in recent versions of Word, is missing on
+both unless installed, and nothing with the same spacing can be bundled in its
+place. For any of these, install the font files system-wide. Microsoft offers
+Aptos as a download on its [Aptos font page](https://learn.microsoft.com/en-us/typography/font-list/aptos).
 
 ## Notes
 
