@@ -104,9 +104,11 @@ jobs:
       - name: Check the macOS installer
         if: runner.os == 'macOS' && matrix.python == '3.14'
         run: |
-          apps=$(mktemp -d)
-          DOCZAP_ZIP_URL="file://$PWD/dist/DocZap-macos-arm64.zip" DOCZAP_APPS_DIR="$apps" sh install.sh
-          codesign --verify --deep "$apps/DocZap.app"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/DocZap-v0.1.0.zip" \
+            https://github.com/arielr550/doczap/releases/download/v0.1.0/DocZap-macos-arm64.zip
+          DOCZAP_TEST_ZIP="$PWD/dist/DocZap-macos-arm64.zip" \
+            DOCZAP_PREVIOUS_ZIP="$RUNNER_TEMP/DocZap-v0.1.0.zip" \
+            uv run python -m unittest discover -s tests -p test_installer_native.py -v
 
       - name: Upload the macOS app
         if: runner.os == 'macOS' && matrix.python == '3.14'
