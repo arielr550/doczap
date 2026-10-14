@@ -414,6 +414,12 @@ class App:
 
 
 def main() -> int:
+    # The frozen app can convert without opening a window. CI uses this same
+    # entry point to verify the renderer and its environment inside each bundle.
+    if sys.argv[1:2] == ["--convert"]:
+        from doczap.cli import main as convert_main
+
+        return convert_main(sys.argv[2:])
     # macOS passes a -psn_ process serial number when an app is opened from Finder.
     files = [arg for arg in sys.argv[1:] if not arg.startswith("-psn_")]
     system.enable_high_dpi()

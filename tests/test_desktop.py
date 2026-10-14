@@ -162,5 +162,19 @@ class DesktopShutdownTests(unittest.TestCase):
         app.root.destroy.assert_called_once_with()
 
 
+@unittest.skipUnless("desktop" in globals(), "requires Tk module")
+class DesktopEntryTests(unittest.TestCase):
+    def test_packaged_conversion_mode_does_not_open_a_window(self) -> None:
+        with (
+            patch("sys.argv", ["DocZap", "--convert", "report.docx", "report.pdf", "--overwrite"]),
+            patch("doczap.cli.convert_document", return_value=Path("report.pdf")) as convert,
+            patch("doczap.desktop.tk.Tk") as window,
+            self.assertLogs(level="INFO"),
+        ):
+            self.assertEqual(desktop.main(), 0)
+        window.assert_not_called()
+        convert.assert_called_once_with("report.docx", "report.pdf", overwrite=True)
+
+
 if __name__ == "__main__":
     unittest.main()

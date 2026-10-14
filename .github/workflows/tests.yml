@@ -83,6 +83,10 @@ jobs:
         if: runner.os == 'macOS'
         run: uv run --group build python scripts/build_app.py
 
+      - name: Convert with the packaged macOS app
+        if: runner.os == 'macOS'
+        run: uv run python scripts/check_app.py dist/DocZap.app/Contents/MacOS/DocZap
+
       # A missing module or data file makes the frozen app exit at once, so an
       # app still running after a few seconds has at least opened its window.
       - name: Check that the macOS app starts
@@ -195,6 +199,10 @@ jobs:
           Start-Sleep -Seconds 15
           if ($app.HasExited) { throw "DocZap exited during startup with code $($app.ExitCode)" }
           Stop-Process -Id $app.Id
+
+      - name: Convert with the packaged Windows app
+        shell: pwsh
+        run: uv run python scripts/check_app.py dist/DocZap/DocZap.exe
 
       - name: Upload the Windows app
         uses: actions/upload-artifact@v7

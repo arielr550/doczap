@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Sequence
 
 from doczap.conversion import convert_document
 
@@ -30,10 +31,10 @@ def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.info("Conversion started: input=%s", args.input_file)
 

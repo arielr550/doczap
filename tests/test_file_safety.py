@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from doczap.conversion import convert_document
+from doczap.process import ConversionCancelled
 from doczap.utils.save_pdf import rename_without_replace
 
 
@@ -116,6 +117,21 @@ class FileSafetyTests(unittest.TestCase):
         with patch("doczap.utils.save_pdf.os.replace", side_effect=OSError(errno.ENOSPC, "Disk full")):
             with self.assertRaises(OSError):
                 self.convert(overwrite=True)
+        self.assertEqual(self.output.read_bytes(), b"old PDF")
+        self.assertEqual(sorted(p.name for p in self.folder.iterdir()), ["report.docx", "report.pdf"])
+
+    def test_cancel_after_rendering_preserves_existing_pdf(self) -> None:
+        self.output.write_bytes(b"old PDF")
+        cancel = threading.Event()
+
+        def render(source, folder, **kwargs):
+            result = self.render(source, folder)
+            cancel.set()
+            return result
+
+        with patch("doczap.converters.libreoffice.LibreOfficeConverter._run_soffice", side_effect=render):
+            with self.assertRaises(ConversionCancelled):
+                convert_document(self.source, overwrite=True, cancel=cancel)
         self.assertEqual(self.output.read_bytes(), b"old PDF")
         self.assertEqual(sorted(p.name for p in self.folder.iterdir()), ["report.docx", "report.pdf"])
 
