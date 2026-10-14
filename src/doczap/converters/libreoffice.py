@@ -9,7 +9,7 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from doczap.converters.base import Converter
-from doczap.system import cache_dir, soffice_candidates, try_lock
+from doczap.system import bundled_soffice, cache_dir, soffice_candidates, try_lock
 
 # Name the import filter explicitly. Without it LibreOffice falls back to its
 # plain-text importer for unreadable files and "successfully" renders the raw
@@ -20,6 +20,11 @@ INPUT_FILTERS = {
 
 
 def find_soffice(binary: str = "soffice") -> str | None:
+    # A build that ships its own LibreOffice always uses it: that copy is the
+    # one the build was tested with.
+    bundled = bundled_soffice()
+    if bundled is not None and bundled.is_file():
+        return str(bundled)
     found = shutil.which(binary)
     if found is not None:
         # Launching LibreOffice through a symlink such as /usr/local/bin/soffice
