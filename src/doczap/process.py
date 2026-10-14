@@ -43,6 +43,20 @@ def renderer_environment(env: dict[str, str]) -> dict[str, str]:
     return env
 
 
+def _group_is_running(group: int) -> bool:
+    # macOS can return EPERM for a group containing only exited/zombie
+    # processes. Those processes cannot run or hold the LibreOffice profile.
+    result = subprocess.run(
+        ["/bin/ps", "-axo", "pgid=,stat="], capture_output=True,
+        text=True, check=True, timeout=2,
+    )
+    return any(
+        fields[0] == str(group) and not fields[1].startswith("Z")
+        for line in result.stdout.splitlines()
+        if len(fields := line.split()) >= 2
+    )
+
+
 def _wait_group(process: subprocess.Popen[str], timeout: float) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -51,6 +65,9 @@ def _wait_group(process: subprocess.Popen[str], timeout: float) -> bool:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
             return True
+        except PermissionError:
+            if not _group_is_running(process.pid):
+                return True
         time.sleep(0.02)
     return False
 
@@ -61,12 +78,20 @@ def _stop_group(process: subprocess.Popen[str]) -> None:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         return
+    except PermissionError:
+        if not _group_is_running(process.pid):
+            return
+        raise
     if _wait_group(process, 1):
         return
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         return
+    except PermissionError:
+        if not _group_is_running(process.pid):
+            return
+        raise
     # A child can close its captured pipes before it exits. Waiting only for
     # communicate() would release the profile while that child still exists.
     if not _wait_group(process, 5):
