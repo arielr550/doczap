@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Merge two or more PDFs into one, in a chosen order, on the new **Merge PDFs** tab.
+
 ## 0.1.1
 
 - Preserve PDFs created by another conversion instead of replacing them without consent.

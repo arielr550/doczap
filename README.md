@@ -38,6 +38,12 @@ Open DocZap, add one or more Word documents (or drop them on the DocZap icon),
 choose whether each PDF goes next to its document or into one folder, and click
 **Convert to PDF**. You're asked before any existing PDF is replaced.
 
+To join PDFs into one, open the **Merge PDFs** tab, add two or more PDFs, put
+them in order with **Move Up** and **Move Down**, and click **Merge PDFs**. The
+first PDF's pages come first, then the next one's, and so on. Pages are copied
+unchanged, not re-rendered. Password-protected PDFs need their password removed
+first.
+
 ### Command line
 
 The desktop app also accepts `--convert` to convert without opening a window:

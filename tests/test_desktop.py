@@ -114,6 +114,99 @@ class DesktopWindowTests(unittest.TestCase):
         convert.assert_not_called()
         self.assertEqual(app.sources, [report])
 
+    def pdf(self, name: str, *widths: int) -> Path:
+        from test_merge import write_pdf
+
+        return write_pdf(self.folder / name, *(widths or (100,)))
+
+    def wait_for_merge(self, app: desktop.App) -> None:
+        deadline = time.monotonic() + 10
+        while (app.busy or app.worker.is_alive()) and time.monotonic() < deadline:
+            self.root.update()
+            time.sleep(0.01)
+        self.root.update()
+        self.assertFalse(app.busy)
+
+    def test_opened_pdfs_go_to_the_merge_tab(self) -> None:
+        report = self.document("report.docx")
+        first, second = self.pdf("first.pdf"), self.pdf("second.pdf")
+        notes = self.folder / "notes.txt"
+        notes.write_text("not a PDF")
+
+        app = desktop.App(self.root, [str(first), str(report), str(second), str(first)])
+        self.assertEqual(app.sources, [report])
+        self.assertEqual(app.pdfs, [first, second])
+
+        app.add_pdfs([str(notes)])
+        self.assertEqual(app.pdfs, [first, second])
+        self.assertIn("Ignored 1 file that is not a PDF", app.merge_status.get())
+
+    def test_move_keeps_the_selected_pdfs_together(self) -> None:
+        a, b, c, d = (self.pdf(f"{name}.pdf") for name in "abcd")
+        app = desktop.App(self.root, [str(a), str(b), str(c), str(d)])
+
+        app.merge_tree.selection_set([str(c), str(d)])
+        app.move_selected_pdfs(-1)
+        self.assertEqual(app.pdfs, [a, c, d, b])
+        app.move_selected_pdfs(-1)
+        app.move_selected_pdfs(-1)  # Already at the top: nothing moves.
+        self.assertEqual(app.pdfs, [c, d, a, b])
+        self.assertEqual(set(app.merge_tree.selection()), {str(c), str(d)})
+
+        app.merge_tree.selection_set([str(c)])
+        app.move_selected_pdfs(1)
+        self.assertEqual(app.pdfs, [d, c, a, b])
+
+    def test_merge_saves_the_pages_in_list_order(self) -> None:
+        from test_merge import page_widths
+
+        first, second = self.pdf("first.pdf", 100, 110), self.pdf("second.pdf", 200)
+        output = self.folder / "joined.pdf"
+        app = desktop.App(self.root, [str(second), str(first)])
+        app.notebook.select(1)
+        self.assertFalse(app.merge_button.instate(["disabled"]))
+
+        with patch("doczap.desktop.filedialog.asksaveasfilename", return_value=str(output)):
+            app.run_current_tab()
+            self.wait_for_merge(app)
+
+        self.assertEqual(page_widths(output), [200, 100, 110])
+        self.assertEqual(app.pdfs, [])
+        self.assertEqual(app.merge_status.get(), "Created joined.pdf (3 pages).")
+
+    def test_merge_refuses_to_save_over_one_of_its_pdfs(self) -> None:
+        first, second = self.pdf("first.pdf"), self.pdf("second.pdf")
+        original = first.read_bytes()
+        app = desktop.App(self.root, [str(first), str(second)])
+
+        with (
+            patch("doczap.desktop.filedialog.asksaveasfilename", return_value=str(first)),
+            patch("doczap.desktop.messagebox.showerror") as error,
+            patch("doczap.desktop.merge_pdfs") as merge,
+        ):
+            app.merge()
+
+        error.assert_called_once()
+        merge.assert_not_called()
+        self.assertEqual(first.read_bytes(), original)
+
+    def test_merge_asks_before_replacing_a_pdf_the_dialog_did_not_confirm(self) -> None:
+        first, second = self.pdf("first.pdf"), self.pdf("second.pdf")
+        (self.folder / "joined.pdf").write_bytes(b"old")
+        app = desktop.App(self.root, [str(first), str(second)])
+
+        # The dialog returned a name without .pdf, so it asked about a different file.
+        with (
+            patch("doczap.desktop.filedialog.asksaveasfilename", return_value=str(self.folder / "joined")),
+            patch("doczap.desktop.messagebox.askyesno", return_value=False) as question,
+            patch("doczap.desktop.merge_pdfs") as merge,
+        ):
+            app.merge()
+
+        question.assert_called_once()
+        merge.assert_not_called()
+        self.assertEqual((self.folder / "joined.pdf").read_bytes(), b"old")
+
 
 @unittest.skipUnless("desktop" in globals(), "Tk module is unavailable")
 class DesktopShutdownTests(unittest.TestCase):
