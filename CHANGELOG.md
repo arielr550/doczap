@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Merge two or more PDFs into one, in a chosen order, on the new **Merge PDFs** tab.
 

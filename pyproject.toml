@@ -1,6 +1,6 @@
 [project]
 name = "doczap"
-version = "0.1.1"
+version = "0.2.0"
 description = "Fast, local, private document conversion that keeps the layout intact."
 readme = "README.md"
 license = "MIT"
