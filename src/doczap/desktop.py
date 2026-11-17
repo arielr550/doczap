@@ -1,4 +1,4 @@
-"""DocZap's desktop window: choose Word documents, choose where the PDFs go, convert."""
+"""DocZap's desktop window: convert Word documents to PDF, or merge PDFs into one."""
 
 from __future__ import annotations
 
@@ -14,12 +14,15 @@ from tkinter import filedialog, font, messagebox, ttk
 from doczap import system
 from doczap.batch import Job, Result, format_summary, plan_jobs, plural, run_jobs
 from doczap.converters.libreoffice import find_soffice
+from doczap.merge import merge_pdfs
 from doczap.utils.file_ops import SUPPORTED_INPUTS
 
 LOGO_PATH = Path(__file__).parent / "assets" / "logo.png"
 LIBREOFFICE_DOWNLOAD_URL = "https://www.libreoffice.org/download/download-libreoffice/"
 WORD_FILE_TYPES = [("Word documents", " ".join(f"*{suffix}" for suffix in sorted(SUPPORTED_INPUTS)))]
+PDF_FILE_TYPES = [("PDF documents", "*.pdf")]
 EMPTY_HINT = "Add the Word documents you want to turn into PDFs."
+MERGE_HINT = "Add the PDFs to merge. Their pages follow the list order, top to bottom."
 BESIDE, FOLDER = "beside", "folder"
 
 
@@ -41,6 +44,9 @@ class App:
         self.destination = tk.StringVar(value=BESIDE)
         self.folder_label = tk.StringVar(value="No folder chosen")
         self.status = tk.StringVar(value=EMPTY_HINT)
+        self.pdfs: list[Path] = []
+        self.merge_status = tk.StringVar(value=MERGE_HINT)
+        self.merged_output: Path | None = None
         self.events: queue.Queue[tuple] = queue.Queue()
         self.busy = False
         self.closing = False
@@ -50,39 +56,89 @@ class App:
         self.last_output: Path | None = None
 
         self.build()
-        self.add_files(files)
+        self.open_files(files)
 
     # Layout
 
     def build(self) -> None:
         root = self.root
         root.title("DocZap")
-        root.minsize(560, 480)
+        root.minsize(560, 520)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
         root.protocol("WM_DELETE_WINDOW", self.quit)
 
         base = font.nametofont("TkDefaultFont").actual()
         title_font = font.Font(root, family=base["family"], size=abs(base["size"]) + 9, weight="bold")
-        heading_font = font.Font(root, family=base["family"], size=abs(base["size"]), weight="bold")
+        self.heading_font = font.Font(root, family=base["family"], size=abs(base["size"]), weight="bold")
 
-        page = ttk.Frame(root, padding=20)
-        page.grid(sticky="nsew")
-        page.columnconfigure(0, weight=1)
+        window = ttk.Frame(root, padding=20)
+        window.grid(sticky="nsew")
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(page)
+        header = ttk.Frame(window)
         header.grid(row=0, column=0, sticky="w", pady=(0, 16))
         self.logo = tk.PhotoImage(file=str(LOGO_PATH))
         ttk.Label(header, image=self.logo).grid(row=0, column=0, rowspan=2, padx=(0, 12))
         ttk.Label(header, text="DocZap", font=title_font).grid(row=0, column=1, sticky="sw")
         ttk.Label(
-            header, text="Word to PDF with the layout intact. Your documents never leave this computer."
+            header, text="Word to PDF with the layout intact. Your files never leave this computer."
         ).grid(row=1, column=1, sticky="nw")
         if sys.platform != "darwin":
             # macOS takes the Dock icon from the app bundle; elsewhere Tk shows its own.
             root.iconphoto(True, self.logo)
 
-        row = 1
+        self.notebook = ttk.Notebook(window)
+        self.notebook.grid(row=1, column=0, sticky="nsew")
+        convert_page = ttk.Frame(self.notebook, padding=16)
+        merge_page = ttk.Frame(self.notebook, padding=16)
+        self.notebook.add(convert_page, text="Convert to PDF")
+        self.notebook.add(merge_page, text="Merge PDFs")
+        self.build_convert(convert_page)
+        self.build_merge(merge_page)
+
+        modifier = "Command" if sys.platform == "darwin" else "Control"
+        root.bind(f"<{modifier}-o>", lambda event: self.add_on_current_tab())
+        root.bind("<Return>", lambda event: self.run_current_tab())
+        if sys.platform == "darwin":
+            # Documents dropped on the Dock icon or opened with "Open With".
+            root.createcommand("::tk::mac::OpenDocument", lambda *paths: self.open_files(paths))
+            root.createcommand("::tk::mac::Quit", self.quit)
+
+        self.refresh_list()
+        self.refresh_merge_list()
+
+    def merge_tab_selected(self) -> bool:
+        return self.notebook.index("current") == 1
+
+    def add_on_current_tab(self) -> None:
+        if self.merge_tab_selected():
+            self.choose_pdfs()
+        else:
+            self.choose_files()
+
+    def run_current_tab(self) -> None:
+        if self.merge_tab_selected():
+            self.merge()
+        else:
+            self.convert()
+
+    def open_files(self, files: Iterable[str]) -> None:
+        """Files from the command line or the Dock: PDFs go to the merge tab."""
+        files = list(files)
+        pdfs = [name for name in files if Path(name).suffix.lower() == ".pdf"]
+        documents = [name for name in files if name not in pdfs]
+        self.add_files(documents)
+        if pdfs:
+            self.add_pdfs(pdfs)
+            if not documents:
+                self.notebook.select(1)
+
+    def build_convert(self, page: ttk.Frame) -> None:
+        heading_font = self.heading_font
+        page.columnconfigure(0, weight=1)
+        row = 0
         if find_soffice() is None:
             notice = ttk.Frame(page)
             notice.grid(row=row, column=0, sticky="ew", pady=(0, 16))
@@ -170,15 +226,54 @@ class App:
         )
         self.convert_button.grid(row=1, column=2, padx=(8, 0))
 
-        modifier = "Command" if sys.platform == "darwin" else "Control"
-        root.bind(f"<{modifier}-o>", lambda event: self.choose_files())
-        root.bind("<Return>", lambda event: self.convert())
-        if sys.platform == "darwin":
-            # Documents dropped on the Dock icon or opened with "Open With".
-            root.createcommand("::tk::mac::OpenDocument", lambda *paths: self.add_files(paths))
-            root.createcommand("::tk::mac::Quit", self.quit)
+    def build_merge(self, page: ttk.Frame) -> None:
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(1, weight=1)
+        ttk.Label(page, text="PDFs, in order", font=self.heading_font).grid(row=0, column=0, sticky="w")
+        list_frame = ttk.Frame(page)
+        list_frame.grid(row=1, column=0, sticky="nsew", pady=(6, 8))
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+        self.merge_tree = ttk.Treeview(
+            list_frame, columns=("name", "folder"), show="headings", height=6, selectmode="extended"
+        )
+        self.merge_tree.heading("name", text="Name", anchor="w")
+        self.merge_tree.heading("folder", text="Folder", anchor="w")
+        self.merge_tree.column("name", width=200, anchor="w")
+        self.merge_tree.column("folder", width=280, anchor="w")
+        self.merge_tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.merge_tree.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.merge_tree.configure(yscrollcommand=scrollbar.set)
+        self.merge_tree.bind("<<TreeviewSelect>>", lambda event: self.update_controls())
+        self.merge_tree.bind("<Delete>", lambda event: self.remove_selected_pdfs())
+        self.merge_tree.bind("<BackSpace>", lambda event: self.remove_selected_pdfs())
 
-        self.refresh_list()
+        buttons = ttk.Frame(page)
+        buttons.grid(row=2, column=0, sticky="w")
+        self.add_pdfs_button = ttk.Button(buttons, text="Add PDFs…", command=self.choose_pdfs)
+        self.add_pdfs_button.grid(row=0, column=0)
+        self.remove_pdfs_button = ttk.Button(buttons, text="Remove", command=self.remove_selected_pdfs)
+        self.remove_pdfs_button.grid(row=0, column=1, padx=(8, 0))
+        self.move_up_button = ttk.Button(buttons, text="Move Up", command=lambda: self.move_selected_pdfs(-1))
+        self.move_up_button.grid(row=0, column=2, padx=(8, 0))
+        self.move_down_button = ttk.Button(
+            buttons, text="Move Down", command=lambda: self.move_selected_pdfs(1)
+        )
+        self.move_down_button.grid(row=0, column=3, padx=(8, 0))
+
+        ttk.Separator(page).grid(row=3, column=0, sticky="ew", pady=16)
+        footer = ttk.Frame(page)
+        footer.grid(row=4, column=0, sticky="ew")
+        footer.columnconfigure(0, weight=1)
+        ttk.Label(footer, textvariable=self.merge_status, wraplength=300).grid(row=0, column=0, sticky="w")
+        self.merge_reveal_button = ttk.Button(
+            footer, text=f"Show in {system.file_manager_name()}", command=self.reveal_merged
+        )
+        self.merge_reveal_button.grid(row=0, column=1, padx=(8, 0))
+        self.merge_reveal_button.grid_remove()
+        self.merge_button = ttk.Button(footer, text="Merge PDFs", command=self.merge)
+        self.merge_button.grid(row=0, column=2, padx=(8, 0))
 
     # Documents
 
@@ -283,6 +378,7 @@ class App:
             return
 
         self.set_busy(True)
+        self.progress.grid()
         self.started = 0
         self.progress.configure(maximum=len(jobs), value=0)
         self.cancel.clear()
@@ -331,8 +427,11 @@ class App:
                 self.started += 1
                 total = int(self.progress["maximum"])
                 self.status.set(f"Converting {event[1].source.name} ({self.started} of {total})…")
-            else:
+            elif event[0] == "done":
                 self.finish(event[1], event[2])
+                return
+            else:
+                self.finish_merge(event)
                 return
         self.root.after(100, self.poll)
 
@@ -357,13 +456,147 @@ class App:
         if self.last_output is not None:
             system.reveal(self.last_output)
 
+    # Merging
+
+    def choose_pdfs(self) -> None:
+        if self.busy:
+            return
+        initial = self.pdfs[-1].parent if self.pdfs else Path.home()
+        files = filedialog.askopenfilenames(
+            parent=self.root, title="Add PDFs", initialdir=initial, filetypes=PDF_FILE_TYPES
+        )
+        self.add_pdfs(files)
+
+    def add_pdfs(self, files: Iterable[str]) -> None:
+        if self.busy:
+            return
+        added = ignored = 0
+        for name in files:
+            path = Path(name).expanduser().resolve()
+            if path.suffix.lower() != ".pdf" or not path.is_file():
+                ignored += 1
+            elif path not in self.pdfs:
+                self.pdfs.append(path)
+                added += 1
+        self.refresh_merge_list()
+        if ignored:
+            kind = "is not a PDF" if ignored == 1 else "are not PDFs"
+            self.merge_status.set(f"Ignored {plural(ignored, 'file')} that {kind}.")
+        elif added:
+            self.merge_status.set(self.merge_hint())
+
+    def merge_hint(self) -> str:
+        if not self.pdfs:
+            return MERGE_HINT
+        return "Add at least one more PDF." if len(self.pdfs) == 1 else ""
+
+    def remove_selected_pdfs(self) -> None:
+        if self.busy:
+            return
+        selected = {Path(item) for item in self.merge_tree.selection()}
+        self.pdfs = [path for path in self.pdfs if path not in selected]
+        self.refresh_merge_list()
+        self.merge_status.set(self.merge_hint())
+
+    def move_selected_pdfs(self, step: int) -> None:
+        """Move the selected PDFs one place up (-1) or down (1), keeping their order."""
+        if self.busy:
+            return
+        selected = [Path(item) for item in self.merge_tree.selection()]
+        positions = sorted(self.pdfs.index(path) for path in selected)
+        if not positions or positions[0] + step < 0 or positions[-1] + step >= len(self.pdfs):
+            return
+        for position in positions if step < 0 else reversed(positions):
+            self.pdfs[position], self.pdfs[position + step] = self.pdfs[position + step], self.pdfs[position]
+        self.refresh_merge_list()
+        self.merge_tree.selection_set([str(path) for path in selected])
+        self.merge_tree.see(str(selected[0]))
+
+    def refresh_merge_list(self) -> None:
+        self.merge_tree.delete(*self.merge_tree.get_children())
+        for path in self.pdfs:
+            self.merge_tree.insert("", "end", iid=str(path), values=(path.name, display_folder(path.parent)))
+        self.update_controls()
+
+    def merge(self) -> None:
+        if self.busy or len(self.pdfs) < 2:
+            return
+        first = self.pdfs[0]
+        name = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save merged PDF as",
+            initialdir=first.parent,
+            initialfile=f"{first.stem} merged.pdf",
+            defaultextension=".pdf",
+            filetypes=PDF_FILE_TYPES,
+        )
+        if not name:
+            return
+        output = Path(name)
+        # The save dialog has already asked whether to replace an existing file.
+        confirmed = output.exists()
+        if output.suffix.lower() != ".pdf":
+            output = output.with_name(f"{output.name}.pdf")
+            confirmed = False
+        output = output.parent.resolve() / output.name
+        if output.resolve() in self.pdfs:
+            messagebox.showerror(
+                "Choose another name",
+                f"{output.name} is one of the PDFs being merged. Save the merged PDF under another name.",
+                parent=self.root,
+            )
+            return
+        if output.exists() and not confirmed and not messagebox.askyesno(
+            "Replace existing PDF?",
+            f"{output.name} already exists.",
+            detail=f"It is in {display_folder(output.parent)}. Replace it?",
+            icon=messagebox.WARNING,
+            default=messagebox.NO,
+            parent=self.root,
+        ):
+            return
+
+        self.set_busy(True)
+        self.merge_status.set(f"Merging {plural(len(self.pdfs), 'PDF')}…")
+        self.worker = threading.Thread(
+            target=self.merge_work, args=(list(self.pdfs), output, output.exists())
+        )
+        self.worker.start()
+        self.root.after(100, self.poll)
+
+    def merge_work(self, pdfs: list[Path], output: Path, overwrite: bool) -> None:
+        # Runs on a background thread, so it only talks to the window through the queue.
+        try:
+            pages = merge_pdfs(pdfs, output, overwrite=overwrite)
+        except Exception as exc:
+            self.events.put(("merge failed", str(exc)))
+        else:
+            self.events.put(("merged", output, pages))
+
+    def finish_merge(self, event: tuple) -> None:
+        self.set_busy(False)
+        if event[0] == "merged":
+            output, pages = event[1], event[2]
+            self.pdfs = []
+            self.refresh_merge_list()
+            self.merge_status.set(f"Created {output.name} ({plural(pages, 'page')}).")
+            self.merged_output = output
+            self.merge_reveal_button.grid()
+        else:
+            self.merge_status.set("The PDFs were not merged.")
+            messagebox.showerror("The PDFs were not merged", event[1], parent=self.root)
+
+    def reveal_merged(self) -> None:
+        if self.merged_output is not None:
+            system.reveal(self.merged_output)
+
     # State
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
         if busy:
-            self.progress.grid()
             self.reveal_button.grid_remove()
+            self.merge_reveal_button.grid_remove()
             self.root.configure(cursor="watch")
         else:
             self.progress.grid_remove()
@@ -386,6 +619,15 @@ class App:
         # On macOS a default button stays blue even when disabled.
         self.convert_button.configure(default="active" if can_convert else "normal")
 
+        has_pdf_selection = bool(self.merge_tree.selection())
+        enable(self.add_pdfs_button, idle)
+        enable(self.remove_pdfs_button, idle and has_pdf_selection)
+        enable(self.move_up_button, idle and has_pdf_selection)
+        enable(self.move_down_button, idle and has_pdf_selection)
+        can_merge = idle and len(self.pdfs) >= 2
+        enable(self.merge_button, can_merge)
+        self.merge_button.configure(default="active" if can_merge else "normal")
+
     def poll_shutdown(self) -> None:
         # Tk stays responsive until the worker has stopped the renderer and
         # released the profile lock. Never destroy Tk while it is still working.
@@ -399,7 +641,7 @@ class App:
             return
         if self.busy and not messagebox.askokcancel(
             "Quit DocZap?",
-            "A conversion is still running. Quit anyway?",
+            "DocZap is still working on your files. Quit anyway?",
             icon=messagebox.WARNING,
             parent=self.root,
         ):

@@ -7,7 +7,8 @@ headless) does the layout, so the PDF matches the original document.
 
 - No network use at run time. Privacy is the reason this tool exists.
 - Do not rebuild document layout in Python (python-docx, ReportLab, and the
-  like). It breaks fidelity; rendering belongs to a real engine.
+  like). It breaks fidelity; rendering belongs to a real engine. Merging PDFs
+  with pypdf is fine: it copies pages unchanged and never re-renders them.
 - Never replace a user's file without explicit consent.
 - Use `uv` for all Python work.
 
