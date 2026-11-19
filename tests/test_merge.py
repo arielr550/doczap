@@ -39,6 +39,7 @@ def write_layered_pdf(
     """One page whose black square is drawn only in the layer "Secret"."""
     writer = PdfWriter()
     page = writer.add_blank_page(width=width, height=100)
+    writer.pdf_header = "%PDF-1.5"
     layer = writer._add_object(
         DictionaryObject({NameObject("/Type"): NameObject("/OCG"), NameObject("/Name"): TextStringObject("Secret")})
     )
@@ -223,6 +224,19 @@ class LayerTests(unittest.TestCase):
         self.assertEqual(len(reader.root_object["/OCProperties"]["/OCGs"]), 4)
         self.assertEqual(len(reader.root_object["/OCProperties"]["/D"]["/Order"]), 4)
         self.assertEqual(hidden_layers(self.output), [True, False, True, False, None])
+
+    def test_layered_pdf_keeps_a_version_declared_in_the_catalog(self) -> None:
+        layered = write_layered_pdf(self.folder / "layered.pdf", 100, hidden=True)
+        writer = PdfWriter(clone_from=layered)
+        writer.pdf_header = "%PDF-1.4"
+        writer.root_object[NameObject("/Version")] = NameObject("/1.7")
+        upgraded = self.folder / "upgraded.pdf"
+        writer.write(upgraded)
+
+        merge_pdfs([self.plain, upgraded], self.output)
+
+        self.assertEqual(PdfReader(self.output).pdf_header, "%PDF-1.7")
+        self.assertEqual(hidden_layers(self.output), [None, True])
 
     @unittest.skipUnless(shutil.which("pdftoppm"), "poppler's pdftoppm is not installed")
     def test_merged_pdf_renders_hidden_layers_hidden(self) -> None:

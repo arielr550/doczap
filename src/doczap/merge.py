@@ -115,9 +115,18 @@ def combine_layers(layered: list[tuple[Path, DictionaryObject]], writer: PdfWrit
 
 
 def copy_layers(sources: list[tuple[Path, PdfReader]], writer: PdfWriter) -> None:
-    layered = [
-        (path, settings) for path, reader in sources if (settings := layer_settings(path, reader)) is not None
-    ]
+    layered = []
+    for path, reader in sources:
+        settings = layer_settings(path, reader)
+        if settings is None:
+            continue
+        layered.append((path, settings))
+        # Layers require PDF 1.5 or newer. A source can declare a newer version
+        # in its catalog instead of its header, and append only uses the header.
+        version = reader.root_object.get("/Version")
+        if version not in ("/1.5", "/1.6", "/1.7", "/2.0"):
+            version = "/1.5"
+        writer.pdf_header = max(writer.pdf_header, f"%PDF-{version[1:]}")
     if not layered:
         return
     if len(layered) == 1:

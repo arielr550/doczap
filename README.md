@@ -50,9 +50,9 @@ more PDFs have layers, DocZap combines their default layer settings, but refuses
 a PDF with alternative layer configurations or a different layer intent, naming
 the file; flatten its layers first or merge it without other layered PDFs.
 
-If the merged PDF's name is taken, DocZap asks before replacing it, once (on
-macOS the save panel asks as well). A file that appears or changes after that
-question is never replaced; DocZap reports it and leaves it as it is.
+If the merged PDF's name is taken, DocZap asks before replacing it. On macOS,
+the save panel also asks. DocZap creates new files without overwriting and
+rechecks the file you approved before replacing it.
 
 ### Command line
 
