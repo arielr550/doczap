@@ -15,7 +15,7 @@ from doczap import system
 from doczap.batch import Job, Result, format_summary, plan_jobs, plural, run_jobs
 from doczap.converters.libreoffice import find_soffice
 from doczap.merge import merge_pdfs
-from doczap.utils.file_ops import SUPPORTED_INPUTS
+from doczap.utils.file_ops import SUPPORTED_INPUTS, FileIdentity, file_identity
 
 LOGO_PATH = Path(__file__).parent / "assets" / "logo.png"
 LIBREOFFICE_DOWNLOAD_URL = "https://www.libreoffice.org/download/download-libreoffice/"
@@ -529,15 +529,15 @@ class App:
             initialfile=f"{first.stem} merged.pdf",
             defaultextension=".pdf",
             filetypes=PDF_FILE_TYPES,
+            # DocZap asks below, about the exact file it will write. Windows and
+            # Linux honour this; macOS ignores it and its panel always asks too.
+            confirmoverwrite=False,
         )
         if not name:
             return
         output = Path(name)
-        # The save dialog has already asked whether to replace an existing file.
-        confirmed = output.exists()
         if output.suffix.lower() != ".pdf":
             output = output.with_name(f"{output.name}.pdf")
-            confirmed = False
         output = output.parent.resolve() / output.name
         if output.resolve() in self.pdfs:
             messagebox.showerror(
@@ -546,7 +546,10 @@ class App:
                 parent=self.root,
             )
             return
-        if output.exists() and not confirmed and not messagebox.askyesno(
+        # Consent covers only the file the user was asked about. A file that
+        # appears later is never replaced, and one that changes is kept.
+        existing = file_identity(output)
+        if existing is not None and not messagebox.askyesno(
             "Replace existing PDF?",
             f"{output.name} already exists.",
             detail=f"It is in {display_folder(output.parent)}. Replace it?",
@@ -558,16 +561,20 @@ class App:
 
         self.set_busy(True)
         self.merge_status.set(f"Merging {plural(len(self.pdfs), 'PDF')}…")
-        self.worker = threading.Thread(
-            target=self.merge_work, args=(list(self.pdfs), output, output.exists())
-        )
+        self.worker = threading.Thread(target=self.merge_work, args=(list(self.pdfs), output, existing))
         self.worker.start()
         self.root.after(100, self.poll)
 
-    def merge_work(self, pdfs: list[Path], output: Path, overwrite: bool) -> None:
+    def merge_work(self, pdfs: list[Path], output: Path, replace: FileIdentity | None) -> None:
         # Runs on a background thread, so it only talks to the window through the queue.
         try:
-            pages = merge_pdfs(pdfs, output, overwrite=overwrite)
+            pages = merge_pdfs(pdfs, output, overwrite=replace is not None, replace_only=replace)
+        except FileExistsError:
+            message = (
+                f"{output.name} was created or changed while DocZap was merging, so it was "
+                "left as it is. Merge again to choose what to do."
+            )
+            self.events.put(("merge failed", message))
         except Exception as exc:
             self.events.put(("merge failed", str(exc)))
         else:

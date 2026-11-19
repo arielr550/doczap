@@ -44,6 +44,16 @@ first PDF's pages come first, then the next one's, and so on. Pages are copied
 unchanged, not re-rendered. Password-protected PDFs need their password removed
 first.
 
+Layers (optional content) keep the visibility they had in their own PDF. One
+layered PDF can be merged with any number of PDFs without layers. When two or
+more PDFs have layers, DocZap combines their default layer settings, but refuses
+a PDF with alternative layer configurations or a different layer intent, naming
+the file; flatten its layers first or merge it without other layered PDFs.
+
+If the merged PDF's name is taken, DocZap asks before replacing it. On macOS,
+the save panel also asks. DocZap creates new files without overwriting and
+rechecks the file you approved before replacing it.
+
 ### Command line
 
 The desktop app also accepts `--convert` to convert without opening a window:

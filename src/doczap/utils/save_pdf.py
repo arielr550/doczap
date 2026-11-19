@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from doczap.utils.file_ops import validate_output_path
+from doczap.utils.file_ops import FileIdentity, file_identity, validate_output_path
 
 
 def rename_without_replace(source: Path, destination: Path) -> None:
@@ -63,10 +63,28 @@ def rename_without_replace(source: Path, destination: Path) -> None:
 
 
 def save_pdf(
-    produced: Path, destination: Path, *, input_path: Path, overwrite: bool
+    produced: Path,
+    destination: Path,
+    *,
+    input_path: Path,
+    overwrite: bool,
+    replace_only: FileIdentity | None = None,
 ) -> None:
-    """Validate again after rendering, then publish the complete PDF atomically."""
+    """Validate again after rendering, then publish the complete PDF atomically.
+
+    With replace_only, overwrite applies only to the file the user agreed to
+    replace: if it is gone the PDF is published without replacing anything, and
+    if another file is there now nothing is replaced.
+    """
     validate_output_path(destination, overwrite=overwrite, input_path=input_path)
+    if overwrite and replace_only is not None:
+        current = file_identity(destination)
+        if current is None:
+            overwrite = False
+        elif current != replace_only:
+            raise FileExistsError(
+                f"{destination.name} changed after you chose to replace it, so it was kept."
+            )
     if overwrite:
         # replace changes the directory entry; it never writes through an
         # output symlink or truncates a file before the complete PDF is ready.
