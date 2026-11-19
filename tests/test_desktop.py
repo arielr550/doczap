@@ -13,6 +13,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from pypdf import PdfReader
+
 try:
     import tkinter as tk
 
@@ -253,6 +255,94 @@ class DesktopShutdownTests(unittest.TestCase):
             app.quit()
         question.assert_not_called()
         app.root.destroy.assert_called_once_with()
+
+
+@unittest.skipUnless("desktop" in globals(), "Tk module is unavailable")
+class MergeConsentTests(unittest.TestCase):
+    """Consent to replace a file covers only that file. Needs no display."""
+
+    def setUp(self) -> None:
+        from test_merge import write_pdf
+
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        self.folder = Path(temp_dir.name).resolve()
+        self.output = self.folder / "joined.pdf"
+        self.app = desktop.App.__new__(desktop.App)
+        self.app.root = Mock()
+        self.app.merge_status = Mock()
+        self.app.events = desktop.queue.Queue()
+        self.app.busy = False
+        self.app.worker = None
+        self.app.pdfs = [write_pdf(self.folder / "first.pdf", 100), write_pdf(self.folder / "second.pdf", 200)]
+        self.app.set_busy = Mock()
+
+    def merge(self, answer: bool = True) -> tuple:
+        with (
+            patch("doczap.desktop.filedialog.asksaveasfilename", return_value=str(self.output)) as dialog,
+            patch("doczap.desktop.messagebox.askyesno", return_value=answer) as self.question,
+        ):
+            self.app.merge()
+        # DocZap asks itself, so the dialog must not ask as well (Windows, Linux).
+        self.assertIs(dialog.call_args.kwargs["confirmoverwrite"], False)
+        if self.app.worker is None:
+            return ()
+        self.app.worker.join(10)
+        return self.app.events.get_nowait()
+
+    def test_a_file_that_appears_after_the_dialog_is_not_replaced(self) -> None:
+        self.app.set_busy.side_effect = lambda busy: self.output.write_bytes(b"someone else's")
+
+        event = self.merge()
+
+        self.question.assert_not_called()
+        self.assertEqual(event[0], "merge failed")
+        self.assertIn("joined.pdf was created or changed", event[1])
+        self.assertEqual(self.output.read_bytes(), b"someone else's")
+        self.assertFalse([p for p in self.folder.iterdir() if p.name.startswith(".doczap_")])
+
+    def test_a_file_that_changes_after_consent_is_kept(self) -> None:
+        from test_merge import write_pdf
+
+        self.output.write_bytes(b"old")
+
+        def replace_file(busy: bool) -> None:
+            # Another program saves a new file under the same name.
+            write_pdf(self.folder / "other.pdf", 300).replace(self.output)
+
+        self.app.set_busy.side_effect = replace_file
+        event = self.merge()
+
+        self.question.assert_called_once()
+        self.assertEqual(event[0], "merge failed")
+        self.assertEqual(PdfReader(self.output).pages[0].mediabox.width, 300)
+
+    def test_confirmed_replacement_replaces_the_file(self) -> None:
+        self.output.write_bytes(b"old")
+
+        event = self.merge(answer=True)
+
+        self.question.assert_called_once()
+        self.assertIn("joined.pdf", self.question.call_args.args[1])
+        self.assertEqual(event[0], "merged")
+        self.assertEqual([int(p.mediabox.width) for p in PdfReader(self.output).pages], [100, 200])
+
+    def test_declined_replacement_does_nothing(self) -> None:
+        self.output.write_bytes(b"old")
+
+        self.assertEqual(self.merge(answer=False), ())
+
+        self.app.set_busy.assert_not_called()
+        self.assertEqual(self.output.read_bytes(), b"old")
+
+    def test_a_file_removed_after_consent_is_created_new(self) -> None:
+        self.output.write_bytes(b"old")
+        self.app.set_busy.side_effect = lambda busy: self.output.unlink()
+
+        event = self.merge()
+
+        self.assertEqual(event[0], "merged")
+        self.assertEqual(len(PdfReader(self.output).pages), 2)
 
 
 @unittest.skipUnless("desktop" in globals(), "requires Tk module")

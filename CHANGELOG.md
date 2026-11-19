@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Merge PDFs: replace an existing PDF only after you agree to replace that exact
+  file. A PDF that appears or changes while merging is kept and reported.
+- Merge PDFs: keep hidden layers hidden. PDFs whose layers cannot be combined
+  faithfully are reported by name, and nothing is written.
+
 ## 0.2.0
 
 - Merge two or more PDFs into one, in a chosen order, on the new **Merge PDFs** tab.
