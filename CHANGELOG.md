@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
 - Merge PDFs: replace an existing PDF only after you agree to replace that exact
   file. A PDF that appears or changes while merging is kept and reported.
