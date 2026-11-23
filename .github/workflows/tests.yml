@@ -26,8 +26,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # The oldest supported Python and the newest one.
-        python: ["3.10", "3.14"]
+        # The oldest supported Python and the newest one. The apps are built
+        # with the newest, pinned to the build licenses/python describes.
+        python: ["3.10", "3.14.10"]
     steps:
       - uses: actions/checkout@v7
 
@@ -80,17 +81,22 @@ jobs:
         run: uv run python -X faulthandler -m unittest discover -s tests -v
 
       - name: Build the macOS app
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && matrix.python == '3.14.10'
         run: uv run --group build python scripts/build_app.py
 
-      - name: Convert with the packaged macOS app
-        if: runner.os == 'macOS'
-        run: uv run python scripts/check_app.py dist/DocZap.app/Contents/MacOS/DocZap
+      # Checks the archive users download, not the folder it was built in.
+      - name: Check the signature, notices, conversion and merge of the macOS archive
+        if: runner.os == 'macOS' && matrix.python == '3.14.10'
+        run: |
+          package="$RUNNER_TEMP/doczap package check"
+          ditto -x -k dist/DocZap-macos-arm64.zip "$package"
+          codesign --verify --deep --strict --verbose=2 "$package/DocZap.app"
+          uv run python scripts/check_app.py "$package/DocZap.app/Contents/MacOS/DocZap"
 
       # A missing module or data file makes the frozen app exit at once, so an
       # app still running after a few seconds has at least opened its window.
       - name: Check that the macOS app starts
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && matrix.python == '3.14.10'
         run: |
           dist/DocZap.app/Contents/MacOS/DocZap &
           pid=$!
@@ -102,7 +108,7 @@ jobs:
           kill "$pid"
 
       - name: Check the macOS installer
-        if: runner.os == 'macOS' && matrix.python == '3.14'
+        if: runner.os == 'macOS' && matrix.python == '3.14.10'
         run: |
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/DocZap-v0.1.0.zip" \
             https://github.com/arielr550/doczap/releases/download/v0.1.0/DocZap-macos-arm64.zip
@@ -111,7 +117,7 @@ jobs:
             uv run python -m unittest discover -s tests -p test_installer_native.py -v
 
       - name: Upload the macOS app
-        if: runner.os == 'macOS' && matrix.python == '3.14'
+        if: runner.os == 'macOS' && matrix.python == '3.14.10'
         uses: actions/upload-artifact@v7
         with:
           path: dist/DocZap-macos-arm64.zip
@@ -130,7 +136,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.10"
           enable-cache: false
 
       - name: Cache the LibreOffice installer
@@ -202,7 +208,7 @@ jobs:
           if ($app.HasExited) { throw "DocZap exited during startup with code $($app.ExitCode)" }
           Stop-Process -Id $app.Id
 
-      - name: Convert with the packaged Windows app
+      - name: Check the notices, conversion and merge of the Windows archive
         shell: pwsh
         run: |
           $package = Join-Path $env:RUNNER_TEMP "doczap package check"

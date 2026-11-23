@@ -673,6 +673,16 @@ def main() -> int:
         from doczap.cli import main as convert_main
 
         return convert_main(sys.argv[2:])
+    # Not a user feature: CI merges real PDFs through each frozen bundle to check
+    # that it loads pypdf as the Merge PDFs tab does. It never replaces a file.
+    if sys.argv[1:2] == ["--check-merge"] and len(sys.argv) >= 5:
+        from doczap.merge import merge_pdfs
+
+        try:
+            merge_pdfs(sys.argv[3:], sys.argv[2])
+        except Exception:
+            return 1
+        return 0
     # macOS passes a -psn_ process serial number when an app is opened from Finder.
     files = [arg for arg in sys.argv[1:] if not arg.startswith("-psn_")]
     system.enable_high_dpi()
