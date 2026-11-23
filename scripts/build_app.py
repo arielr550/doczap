@@ -17,12 +17,14 @@ Python does not.
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import plistlib
 import re
 import shutil
 import subprocess
 import sys
+from importlib.metadata import distribution
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +40,10 @@ ENTRY_SCRIPT = "from doczap.desktop import main\n\nraise SystemExit(main())\n"
 LANGUAGE_SETTINGS = ("Langpack-", "cjk_", "ctl_", "ctlseqcheck_")
 # The dictionaries (spelling and hyphenation) of a default English install.
 KEPT_EXTENSIONS = {"dict-en", "dict-es", "dict-fr"}
+PYTHON_NOTICES = PROJECT_ROOT / "licenses" / "python"
+# The Python packages inside the app, and the license file each one ships.
+# PyInstaller's bootloader and runtime hooks are part of every frozen app.
+BUNDLED_PACKAGES = {"pypdf": "LICENSE", "PyInstaller": "COPYING.txt"}
 
 
 def project_version() -> str:
@@ -56,6 +62,43 @@ def check_python() -> None:
             "This Python has no Tk, so the app window cannot be built. Run with "
             "`uv run --managed-python --group build python scripts/build_app.py`."
         ) from None
+    # The bundled Python's notices are only right for the build they came from.
+    expected = python_notices_version()
+    if platform.python_version() != expected:
+        raise SystemExit(
+            f"The Python notices in licenses/python are for Python {expected}, not "
+            f"{platform.python_version()}. Build with `--python {expected}`, or refresh "
+            "them with scripts/update_python_notices.py."
+        )
+
+
+def python_notices_version() -> str:
+    source = (PYTHON_NOTICES / "SOURCE.txt").read_text(encoding="utf-8")
+    return source.split()[1]
+
+
+def notice_names() -> list[str]:
+    """The files every packaged app carries in its Licenses folder."""
+    python = sorted(f"Python/{path.name}" for path in PYTHON_NOTICES.glob("LICENSE.*.txt"))
+    return ["DocZap.txt", *(f"{name}.txt" for name in BUNDLED_PACKAGES), "Tk.txt", *python]
+
+
+def copy_license_notices(destination: Path) -> None:
+    destination.mkdir()
+    shutil.copyfile(PROJECT_ROOT / "LICENSE", destination / "DocZap.txt")
+    shutil.copyfile(PROJECT_ROOT / "licenses" / "Tk.txt", destination / "Tk.txt")
+    # uv-managed Python, with the libraries built into it (OpenSSL, SQLite, Tcl
+    # and others), as listed by python-build-standalone.
+    shutil.copytree(PYTHON_NOTICES, destination / "Python", ignore=shutil.ignore_patterns("SOURCE.txt"))
+    for component, filename in BUNDLED_PACKAGES.items():
+        package = distribution(component)
+        notice = next(
+            path for path in package.files or () if path.parts[-2:] == ("licenses", filename)
+        )
+        shutil.copyfile(package.locate_file(notice), destination / f"{component}.txt")
+    missing = [name for name in notice_names() if not (destination / name).is_file()]
+    if missing:
+        raise RuntimeError(f"Missing license notices: {missing}")
 
 
 def run_pyinstaller(icon: Path, *extra: str) -> None:
@@ -115,8 +158,9 @@ def build_macos() -> Path:
     )
     with plist_path.open("wb") as plist_file:
         plistlib.dump(info, plist_file)
+    copy_license_notices(app / "Contents" / "Resources" / "Licenses")
 
-    # Editing Info.plist breaks PyInstaller's ad-hoc signature, so sign again.
+    # The updated metadata and notices need to be covered by the signature.
     result = subprocess.run(
         ["codesign", "--force", "--deep", "--sign", "-", str(app)],
         capture_output=True,
@@ -228,17 +272,47 @@ def folder_size(folder: Path) -> str:
     return f"{size / 1_000_000:.0f} MB"
 
 
+def write_libreoffice_source_notice(libreoffice: Path, notices: Path) -> None:
+    # The executable's product version includes the build number used by
+    # the source archive, even when the downloaded MSI has been renamed.
+    soffice = libreoffice / "program" / "soffice.exe"
+    version = subprocess.check_output(
+        [
+            "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+            "(Get-Item -LiteralPath $env:DOCZAP_SOFFICE).VersionInfo.ProductVersion",
+        ],
+        env={**os.environ, "DOCZAP_SOFFICE": str(soffice)},
+        text=True,
+    ).strip()
+    if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version) is None:
+        raise RuntimeError(f"Could not identify the bundled LibreOffice version: {version!r}")
+    missing = [name for name in ("LICENSE.html", "NOTICE") if not (libreoffice / name).is_file()]
+    if missing:
+        raise RuntimeError(f"The unpacked LibreOffice has no {', '.join(missing)}")
+    (notices / "LibreOffice-source.txt").write_text(
+        f"LibreOffice {version}\n"
+        "License notices are in ../LibreOffice/LICENSE.html and ../LibreOffice/NOTICE.\n"
+        "Corresponding source code is available from The Document Foundation.\n"
+        f"https://downloadarchive.documentfoundation.org/libreoffice/old/{version}/src/\n",
+        encoding="utf-8",
+    )
+
+
 def build_windows(msi: Path) -> Path:
     run_pyinstaller(windows_icon())
     app_dir = DIST_DIR / APP_NAME
-    extract_libreoffice(msi, app_dir / "LibreOffice")
+    libreoffice = app_dir / "LibreOffice"
+    extract_libreoffice(msi, libreoffice)
+    notices = app_dir / "Licenses"
+    copy_license_notices(notices)
+    write_libreoffice_source_notice(libreoffice, notices)
 
     # No version in the name, so the "latest release" download link never changes.
     archive = DIST_DIR / f"{APP_NAME}-windows-x64"
     archive = Path(shutil.make_archive(str(archive), "zip", root_dir=DIST_DIR, base_dir=APP_NAME))
     print(
         f"{app_dir.name}: {folder_size(app_dir)}, of which LibreOffice "
-        f"{folder_size(app_dir / 'LibreOffice')}; {archive.name}: "
+        f"{folder_size(libreoffice)}; {archive.name}: "
         f"{archive.stat().st_size / 1_000_000:.0f} MB"
     )
     return archive

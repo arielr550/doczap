@@ -378,6 +378,24 @@ class DesktopEntryTests(unittest.TestCase):
         window.assert_not_called()
         convert.assert_called_once_with("report.docx", "report.pdf", overwrite=True)
 
+    def test_merge_check_mode_merges_without_replacing(self) -> None:
+        from test_merge import write_pdf
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            pdfs = [str(write_pdf(folder / name, width)) for name, width in (("a.pdf", 100), ("b.pdf", 200))]
+            output = folder / "joined.pdf"
+            with patch("doczap.desktop.tk.Tk") as window:
+                with patch("sys.argv", ["DocZap", "--check-merge", str(output), *pdfs]):
+                    self.assertEqual(desktop.main(), 0)
+                self.assertEqual([page.mediabox.width for page in PdfReader(output).pages], [100, 200])
+
+                output.write_bytes(b"old")
+                with patch("sys.argv", ["DocZap", "--check-merge", str(output), *pdfs]):
+                    self.assertEqual(desktop.main(), 1)
+            window.assert_not_called()
+            self.assertEqual(output.read_bytes(), b"old")
+
 
 if __name__ == "__main__":
     unittest.main()

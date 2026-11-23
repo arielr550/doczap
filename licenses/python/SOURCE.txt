@@ -1,0 +1,3 @@
+CPython 3.14.10 from python-build-standalone 20261110
+https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.14.10%2B20261110-aarch64-apple-darwin-pgo%2Blto-full.tar.zst
+sha256:d14291578918474f3b02d2530c90dcba30efa7ccc0e3b01ae1bfeebbbbcd9f6a
