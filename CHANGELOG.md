@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+- Batch conversion keeps an existing PDF if it changes after you approve replacing it.
+- Update the PDF parser to pypdf 7.1.1 and the Windows renderer to LibreOffice 26.2.7.3.
+- Remove Pillow from the packaged apps and include third-party license notices.
+- Verify real conversions and merges from the macOS and Windows release archives.
+- Simplify download, installation, and privacy guidance in the README.
+
 ## 0.2.1
 
 - Merge PDFs: replace an existing PDF only after you agree to replace that exact
