@@ -48,7 +48,9 @@ class ConversionTests(unittest.TestCase):
 
             expected = input_path.resolve().with_suffix(".pdf")
             self.assertEqual(result, expected)
-            converter.convert.assert_called_once_with(str(input_path.resolve()), str(expected), overwrite=False, cancel=None)
+            converter.convert.assert_called_once_with(
+                str(input_path.resolve()), str(expected), overwrite=False, replace_only=None, cancel=None
+            )
 
     def test_existing_default_output_is_not_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
