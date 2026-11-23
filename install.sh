@@ -4,8 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/arielr550/doczap/main/install.sh | sh
 #
 # Downloads the latest release into /Applications (or ~/Applications when
-# /Applications is not writable). DocZap is not notarized by Apple; a download
-# made with curl is not quarantined, so macOS opens it without a warning.
+# /Applications is not writable).
 
 set -eu
 

@@ -83,7 +83,7 @@ class App:
         ttk.Label(header, image=self.logo).grid(row=0, column=0, rowspan=2, padx=(0, 12))
         ttk.Label(header, text="DocZap", font=title_font).grid(row=0, column=1, sticky="sw")
         ttk.Label(
-            header, text="Word to PDF with the layout intact. Your files never leave this computer."
+            header, text="Convert Word documents and merge PDFs on this computer."
         ).grid(row=1, column=1, sticky="nw")
         if sys.platform != "darwin":
             # macOS takes the Dock icon from the app bundle; elsewhere Tk shows its own.
