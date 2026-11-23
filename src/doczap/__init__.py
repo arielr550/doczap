@@ -1,1 +1,1 @@
-"""DocZap: fast, local, private document conversion that keeps the layout intact."""
+"""DocZap: local DOCX to PDF conversion and PDF merging."""

@@ -11,7 +11,7 @@ from doczap.conversion import convert_document
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="doczap",
-        description="Fast, local, private DOCX to PDF conversion that keeps the layout intact.",
+        description="Convert a DOCX file to PDF on this computer with LibreOffice.",
     )
     parser.add_argument("input_file", help="Path to input DOCX file.")
     parser.add_argument(

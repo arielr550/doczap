@@ -1,165 +1,48 @@
 # DocZap
 
-Fast, local, private DOCX → PDF conversion that keeps the layout intact.
+Convert Word documents to PDF and merge PDFs on your computer. DocZap uses
+LibreOffice for conversion and copies pages directly when merging PDFs.
 
-Rendering is done by LibreOffice in headless mode, so the PDF matches what Word
-shows. Nothing leaves your machine — no cloud APIs, no network calls.
+## Download
 
-## Install
+| Platform | Get started |
+| --- | --- |
+| Mac with Apple silicon | Download [DocZap for macOS](https://github.com/arielr550/doczap/releases/latest/download/DocZap-macos-arm64.zip), unzip it, and move DocZap to Applications. Install the latest [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) for DOCX conversion. |
+| Windows x64 | Download [DocZap for Windows](https://github.com/arielr550/doczap/releases/latest/download/DocZap-windows-x64.zip), extract the entire archive, and open `DocZap.exe` inside the `DocZap` folder. LibreOffice is included. |
 
-### macOS (Apple silicon)
+DocZap is not notarized by Apple or signed by a Windows publisher, so the first
+launch shows a warning:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/arielr550/doczap/main/install.sh | sh
-```
+- **macOS:** open DocZap once, then choose **Open Anyway** in **System Settings →
+  Privacy & Security**. [Apple explains this here](https://support.apple.com/en-us/102445).
+- **Windows:** if "Windows protected your PC" appears, choose **More info**, then
+  **Run anyway**.
 
-This puts the latest DocZap into Applications; run it again to update. DocZap
-also needs LibreOffice (`brew install --cask libreoffice`, or the `.dmg` from
-[libreoffice.org](https://www.libreoffice.org/download/)), and the installer
-tells you if it is missing.
+## Use DocZap
 
-DocZap is not notarized by Apple. The installer avoids the warning that brings,
-because macOS only checks files downloaded by a browser. If you download the zip
-from the releases page in a browser instead, open DocZap once, then allow it in
-**System Settings → Privacy & Security → Open Anyway**.
+- **Convert to PDF** — Add one or more `.docx` files, choose where to save the
+  PDFs, and click **Convert to PDF**. Install the fonts used by the documents
+  if exact line breaks and pagination matter.
+- **Merge PDFs** — Add two or more PDFs, arrange them in page order, and
+  click **Merge PDFs** to choose a destination. PDFs that require an opening
+  password must be unlocked first. Some combinations of layered PDFs are
+  unsupported and show an error.
+- DocZap asks before replacing an existing PDF.
 
-### Windows
+## Privacy and support
 
-Download [DocZap-windows-x64.zip](https://github.com/arielr550/doczap/releases/latest/download/DocZap-windows-x64.zip),
-extract it anywhere, and run `DocZap.exe` in the `DocZap` folder. LibreOffice is
-included, so there is nothing else to install.
+DocZap converts and merges files on your computer. It has no telemetry, account,
+or upload feature, and it configures LibreOffice to block remote links in
+documents, so linked web images are left out of the PDF. PDFs can retain
+document information, links, annotations, or hidden layers. Review outputs
+before sharing sensitive files.
 
-DocZap is not code-signed, so the first time Windows may show "Windows protected
-your PC". Choose **More info**, then **Run anyway**.
+For help, open a [GitHub issue](https://github.com/arielr550/doczap/issues) with
+your DocZap version, operating system, and the steps to reproduce the problem.
+Use sample files you can share publicly. Before pasting logs or error messages,
+replace file names, folder paths, and document text you would not publish.
 
-## Usage
-
-Open DocZap, add one or more Word documents (or drop them on the DocZap icon),
-choose whether each PDF goes next to its document or into one folder, and click
-**Convert to PDF**. You're asked before any existing PDF is replaced.
-
-To join PDFs into one, open the **Merge PDFs** tab, add two or more PDFs, put
-them in order with **Move Up** and **Move Down**, and click **Merge PDFs**. The
-first PDF's pages come first, then the next one's, and so on. Pages are copied
-unchanged, not re-rendered. Password-protected PDFs need their password removed
-first.
-
-Layers (optional content) keep the visibility they had in their own PDF. One
-layered PDF can be merged with any number of PDFs without layers. When two or
-more PDFs have layers, DocZap combines their default layer settings, but refuses
-a PDF with alternative layer configurations or a different layer intent, naming
-the file; flatten its layers first or merge it without other layered PDFs.
-
-If the merged PDF's name is taken, DocZap asks before replacing it. On macOS,
-the save panel also asks. DocZap creates new files without overwriting and
-rechecks the file you approved before replacing it.
-
-### Command line
-
-The desktop app also accepts `--convert` to convert without opening a window:
-
-```bash
-/Applications/DocZap.app/Contents/MacOS/DocZap --convert report.docx
-```
-
-On Windows, use `DocZap.exe --convert report.docx`. An optional second path sets
-the output PDF; add `--overwrite` only when you want to replace an existing PDF.
-
-From a clone of this repository (needs [uv](https://docs.astral.sh/uv/) and
-LibreOffice), save the PDF beside the DOCX:
-
-```bash
-./doczap report.docx
-```
-
-Or choose the output path (add `--overwrite` to replace an existing file):
-
-```bash
-uv run --offline python main.py input.docx output.pdf
-```
-
-## Building from source
-
-You need [uv](https://docs.astral.sh/uv/), and LibreOffice on macOS and Linux.
-
-### macOS app
-
-```bash
-uv run --managed-python --group build python scripts/build_app.py
-```
-
-This writes `dist/DocZap.app` and a zip of it. The first build downloads
-PyInstaller. `--managed-python` matters: the app window needs Tk, which
-Homebrew's Python leaves out.
-
-To try the window without building, run
-`uv run --managed-python python -m doczap.desktop`.
-
-### Windows app
-
-Download the LibreOffice installer (`LibreOffice_<version>_Win_x86-64.msi` from
-libreoffice.org) and run:
-
-```powershell
-uv run --managed-python --group build python scripts/build_app.py --libreoffice-msi LibreOffice_<version>_Win_x86-64.msi
-```
-
-CI builds both apps on every pull request and keeps them for 14 days as workflow
-artifacts.
-
-### Releases
-
-Set the new version in `pyproject.toml`, merge it, then tag that commit:
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-CI runs the tests, builds both apps, and publishes a GitHub Release with
-`DocZap-macos-arm64.zip` and `DocZap-windows-x64.zip`.
-CI checks real conversions through both packaged apps. After publication, it
-downloads the released macOS archive and verifies updates from v0.1.0, recovery
-from failed updates, and conversion through the installed app.
-
-## Fonts
-
-A missing font never makes a conversion fail. LibreOffice substitutes another
-font instead, and if the substitute is wider or narrower, line breaks and page
-counts change.
-
-DocZap uses every font installed on the computer. LibreOffice also brings
-look-alikes with identical spacing for Word's most common fonts, so these keep
-their layout even where the original is missing:
-
-| Font in the document | Replaced by, when missing |
-|---|---|
-| Calibri | Carlito |
-| Cambria | Caladea |
-| Arial, Arial Narrow | Liberation Sans, Liberation Sans Narrow |
-| Times New Roman | Liberation Serif |
-| Courier New | Liberation Mono |
-
-Windows includes nearly all of Office's fonts. macOS includes Arial, Georgia,
-Verdana, Tahoma, Trebuchet MS and others, but not Office-only fonts such as
-Calibri Light, Segoe UI, Consolas, Candara or Corbel; Word for Mac keeps its
-copies to itself. Aptos, the default in recent versions of Word, is missing on
-both unless installed, and nothing with the same spacing can be bundled in its
-place. For any of these, install the font files system-wide. Microsoft offers
-Aptos as a download on its [Aptos font page](https://learn.microsoft.com/en-us/typography/font-list/aptos).
-
-## Notes
-
-- Runs only when you open it — no login item, background service, or watcher.
-- LibreOffice exits after each conversion, with a 60-second timeout. On timeout
-  or when you quit during conversion, DocZap stops the renderer and its child
-  processes before cleaning up.
-- Web-linked images are not downloaded, so they are left out of the PDF.
-- Renders beside the destination and saves the complete PDF in one operation.
-  A failed conversion or save preserves any existing PDF. Output symlinks,
-  directories, and paths that refer to the source document are rejected.
-
-## Extending
-
-Add a converter class implementing `Converter`
-(`src/doczap/converters/base.py`), then route to it from `select_converter(...)`
-in `src/doczap/conversion.py`. The CLI stays unchanged.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for command-line use, source builds,
+and tests. DocZap is available under the [MIT License](LICENSE). Notices for
+the bundled third-party software are in the app's `Licenses` folder (inside
+`DocZap.app/Contents/Resources` on macOS).
