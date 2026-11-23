@@ -6,7 +6,7 @@ from pathlib import Path
 from doczap.converters.base import Converter
 from doczap.converters.libreoffice import LibreOfficeConverter
 from doczap.process import check_cancelled
-from doczap.utils.file_ops import ensure_supported_input, validate_input_path, validate_output_path
+from doczap.utils.file_ops import FileIdentity, ensure_supported_input, validate_input_path, validate_output_path
 
 
 def default_output_path(input_path: Path) -> Path:
@@ -28,6 +28,7 @@ def convert_document(
     output_file: str | Path | None = None,
     *,
     overwrite: bool = False,
+    replace_only: FileIdentity | None = None,
     cancel: threading.Event | None = None,
 ) -> Path:
     """Validate and convert one document, returning the final PDF path."""
@@ -46,5 +47,7 @@ def convert_document(
     ensure_supported_input(input_path)
     validate_output_path(output_path, overwrite=overwrite, input_path=input_path)
     converter = select_converter(input_path, output_path)
-    converter.convert(str(input_path), str(output_path), overwrite=overwrite, cancel=cancel)
+    converter.convert(
+        str(input_path), str(output_path), overwrite=overwrite, replace_only=replace_only, cancel=cancel
+    )
     return output_path

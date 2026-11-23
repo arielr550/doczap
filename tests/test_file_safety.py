@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 from doczap.conversion import convert_document
 from doczap.process import ConversionCancelled
+from doczap.utils.file_ops import file_identity
 from doczap.utils.save_pdf import rename_without_replace
 
 
@@ -89,6 +90,19 @@ class FileSafetyTests(unittest.TestCase):
         with patch("doczap.converters.libreoffice.LibreOfficeConverter._run_soffice", side_effect=render):
             with self.assertRaises(FileExistsError):
                 convert_document(self.source)
+        self.assertEqual(self.output.read_bytes(), b"another process's PDF")
+
+    def test_pdf_changed_after_confirmation_is_preserved(self) -> None:
+        self.output.write_bytes(b"old PDF")
+        agreed = file_identity(self.output)
+
+        def render(source, folder, **kwargs):
+            self.output.write_bytes(b"another process's PDF")
+            return self.render(source, folder)
+
+        with patch("doczap.converters.libreoffice.LibreOfficeConverter._run_soffice", side_effect=render):
+            with self.assertRaisesRegex(FileExistsError, "changed after you chose to replace"):
+                convert_document(self.source, overwrite=True, replace_only=agreed)
         self.assertEqual(self.output.read_bytes(), b"another process's PDF")
 
     def test_concurrent_conversions_only_publish_one_pdf(self) -> None:

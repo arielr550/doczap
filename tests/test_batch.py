@@ -10,7 +10,7 @@ from doczap.batch import Job, Result, format_summary, plan_jobs, run_jobs
 from doczap.process import ConversionCancelled
 
 
-def fake_convert(source, output, *, overwrite=False, cancel=None):
+def fake_convert(source, output, *, overwrite=False, replace_only=None, cancel=None):
     Path(output).write_bytes(b"%PDF")
     return Path(output)
 
@@ -27,7 +27,7 @@ class PlanTests(unittest.TestCase):
 
 class RunTests(unittest.TestCase):
     def test_failures_are_collected_and_the_rest_still_convert(self) -> None:
-        def convert(source, output, *, overwrite=False, cancel=None):
+        def convert(source, output, **kwargs):
             if Path(source).name == "bad.docx":
                 raise RuntimeError("LibreOffice could not read it")
             return fake_convert(source, output)
@@ -52,10 +52,13 @@ class RunTests(unittest.TestCase):
         self.assertIn("already saved as report.pdf", result.errors[0])
 
     def test_replace_choice_is_passed_on(self) -> None:
-        job = Job(Path("/a/report.docx"), Path("/a/report.pdf"), replace=True)
+        agreed = (1, 2, 3, 4)
+        job = Job(Path("/a/report.docx"), Path("/a/report.pdf"), replace_only=agreed)
         with patch("doczap.batch.convert_document") as convert:
             run_jobs([job])
-        convert.assert_called_once_with(job.source, job.output, overwrite=True, cancel=None)
+        convert.assert_called_once_with(
+            job.source, job.output, overwrite=True, replace_only=agreed, cancel=None
+        )
 
 
     def test_cancel_before_start_skips_all_jobs(self) -> None:

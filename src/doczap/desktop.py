@@ -362,16 +362,20 @@ class App:
             return
 
         jobs = plan_jobs(self.sources, output_dir)
-        existing = [job for job in jobs if job.output.exists()]
+        try:
+            for job in jobs:
+                job.replace_only = file_identity(job.output)
+        except OSError as exc:
+            messagebox.showerror("Could not check output files", str(exc), parent=self.root)
+            return
+        existing = [job for job in jobs if job.replace_only is not None]
         skipped = 0
         if existing:
             replace = self.ask_replace(existing)
             if replace is None:
                 return
-            for job in existing:
-                job.replace = replace
             if not replace:
-                jobs = [job for job in jobs if job not in existing]
+                jobs = [job for job in jobs if job.replace_only is None]
                 skipped = len(existing)
         if not jobs:
             self.status.set(format_summary(Result(), skipped))

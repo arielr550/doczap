@@ -11,7 +11,7 @@ from pathlib import Path
 
 from doczap.converters.base import Converter
 from doczap.process import check_cancelled, run_process
-from doczap.utils.file_ops import validate_output_path
+from doczap.utils.file_ops import FileIdentity, validate_output_path
 from doczap.utils.save_pdf import save_pdf
 from doczap.system import (
     bundled_soffice,
@@ -132,6 +132,7 @@ class LibreOfficeConverter(Converter):
 
     def convert(
         self, input_path: str, output_path: str, *, overwrite: bool = False,
+        replace_only: FileIdentity | None = None,
         cancel: threading.Event | None = None,
     ) -> None:
         src = Path(input_path)
@@ -150,7 +151,7 @@ class LibreOfficeConverter(Converter):
                     f"stderr='{clean_stderr(result.stderr)}'"
                 )
             check_cancelled(cancel)
-            save_pdf(produced, dst, input_path=src, overwrite=overwrite)
+            save_pdf(produced, dst, input_path=src, overwrite=overwrite, replace_only=replace_only)
 
     def _run_soffice(
         self, input_file: Path, output_dir: Path, *, cancel: threading.Event | None = None

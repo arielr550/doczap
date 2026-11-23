@@ -31,7 +31,7 @@ def tearDownModule() -> None:
         ROOT.destroy()
 
 
-def fake_convert(source, output, *, overwrite=False, cancel=None):
+def fake_convert(source, output, *, overwrite=False, replace_only=None, cancel=None):
     Path(output).write_bytes(b"%PDF")
     return Path(output)
 
@@ -115,6 +115,26 @@ class DesktopWindowTests(unittest.TestCase):
 
         convert.assert_not_called()
         self.assertEqual(app.sources, [report])
+
+    def test_conversion_uses_pdf_identity_from_before_the_prompt(self) -> None:
+        report = self.document("report.docx")
+        output = report.with_suffix(".pdf")
+        output.write_bytes(b"old")
+        agreed = desktop.file_identity(output)
+        app = desktop.App(self.root, [str(report)])
+
+        def confirm(*args, **kwargs):
+            output.write_bytes(b"new PDF")
+            return True
+
+        with (
+            patch("doczap.desktop.messagebox.askyesnocancel", side_effect=confirm),
+            patch("doczap.batch.convert_document") as convert,
+        ):
+            app.convert()
+            self.wait_until_idle(app)
+
+        self.assertEqual(convert.call_args.kwargs["replace_only"], agreed)
 
     def pdf(self, name: str, *widths: int) -> Path:
         from test_merge import write_pdf

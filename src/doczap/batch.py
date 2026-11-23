@@ -12,13 +12,14 @@ from pathlib import Path
 
 from doczap.conversion import convert_document, default_output_path
 from doczap.process import ConversionCancelled, check_cancelled
+from doczap.utils.file_ops import FileIdentity
 
 
 @dataclass
 class Job:
     source: Path
     output: Path
-    replace: bool = False
+    replace_only: FileIdentity | None = None
 
 
 @dataclass
@@ -59,7 +60,10 @@ def run_jobs(
         claimed.add(job.output)
         try:
             check_cancelled(cancel)
-            convert_document(job.source, job.output, overwrite=job.replace, cancel=cancel)
+            convert_document(
+                job.source, job.output, overwrite=job.replace_only is not None,
+                replace_only=job.replace_only, cancel=cancel,
+            )
         except ConversionCancelled:
             result.cancelled = True
             break

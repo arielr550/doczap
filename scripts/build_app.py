@@ -72,6 +72,8 @@ def run_pyinstaller(icon: Path, *extra: str) -> None:
             "--windowed",
             "--icon", str(icon),
             "--collect-data", "doczap",
+            # Pillow builds the icon. The Tk app loads its PNG directly.
+            "--exclude-module", "PIL",
             "--distpath", str(DIST_DIR),
             "--workpath", str(BUILD_DIR / "pyinstaller"),
             "--specpath", str(BUILD_DIR),
